@@ -54,6 +54,16 @@ output <- ggplot(combined_data_long, aes(x = value, y = measurement, color = org
   geom_point(alpha = 0.5) +
   geom_smooth(method = "lm", se = FALSE, formula = y ~ x) +
   facet_grid(rows = vars(metric), cols = vars(factor), scales = "free", switch = "both") +
+  geom_text(
+    data = data.frame(
+      factor = c("Number of samples", "Genome size (Mb)", "Number of samples", "Genome size (Mb)"),
+      metric = c("Run time (hours)", "Run time (hours)", "Max RAM (GB)", "Max RAM (GB)"),
+      label = c("A", "B", "C", "D")
+    ),
+    mapping = aes(x = -Inf, y = Inf, label = label),
+    hjust = -0.1, vjust = 1.1,
+    inherit.aes = FALSE
+  ) +
   scale_color_manual(values = c("eukaryote" = "#1f78b4", "prokaryote" = "#33a02c")) +
   labs(
     x = NULL,
