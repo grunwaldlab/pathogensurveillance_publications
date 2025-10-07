@@ -24,7 +24,7 @@ genome_size_data$replicate <- letters[genome_size_data$replicate]
 
 # Combine into a single table
 genome_size_data$factor <- 'Genome size (Mb)'
-sample_size_data$factor <- 'Sample size'
+sample_size_data$factor <- 'Number of samples'
 needed_cols <- c(
   'value', 
   'replicate',
@@ -46,7 +46,7 @@ combined_data_long <- combined_data %>%
     metric = factor(metric,
                     levels = c("clock_hours", "max_rss_gb"),
                     labels = c("Run time (hours)", "Max RAM (GB)")),
-    factor = factor(factor, levels = c("Genome size (Mb)", "Sample size"))
+    factor = factor(factor, levels = c("Number of samples", "Genome size (Mb)"))
   )
 
 # Create the faceted plot
