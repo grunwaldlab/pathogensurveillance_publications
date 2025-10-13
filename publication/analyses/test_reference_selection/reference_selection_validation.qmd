@@ -17,6 +17,7 @@ library(dplyr)
 library(ggplot2)
 library(viridis)
 library(PathoSurveilR)
+library(readr)
 ```
 
 ## Required command line software
@@ -67,7 +68,7 @@ mkdir -p data/metadata
 datasets download genome taxon 1240483 --filename data/downloads/reference_assemblies_download.zip
 unzip data/downloads/reference_assemblies_download.zip -d data/downloads
 mv data/downloads/ncbi_dataset/data/**/*.fna data/assemblies/references/
-mv data/downloads/ncbi_dataset/data/assembly_data_report.jsonl data/metadata/sample_metadata.tsv
+mv data/downloads/ncbi_dataset/data/assembly_data_report.jsonl data/metadata/
 rm -rf data/downloads
 rsync -avL fosterz@hpc.cqls.oregonstate.edu:/nfs7/BPP/Chang_Lab/Upasana/collaborations/pipeline/illumina_simulated_reads/sept17_2025_output/assemblies/spades/*scaffolds.fa.gz data/assemblies/samples/
 ```
@@ -95,6 +96,7 @@ sourmash compare -k 31 --ani --csv data/ani_matrix.csv --output data/ani_matrix.
 ani_matrix <- read.csv('data/ani_matrix.csv', header = TRUE, check.names = FALSE)
 colnames(ani_matrix) <- sub(colnames(ani_matrix), pattern = '^data/assemblies/references/(.+?\\.[0-9])_.+$', replacement = '\\1')
 colnames(ani_matrix) <- sub(colnames(ani_matrix), pattern = '^data/assemblies/samples/(.+?)\\.scaffolds\\.fa\\.gz$', replacement = '\\1')
+colnames(ani_matrix) <- sub(colnames(ani_matrix), pattern = '^data/assemblies/samples/(.+?)\\.assembly\\.fasta\\.gz$', replacement = '\\1')
 rownames(ani_matrix) <- colnames(ani_matrix)
 ```
 
@@ -105,6 +107,7 @@ rownames(ani_matrix) <- colnames(ani_matrix)
 
 ```{r}
 sample_metadata <- read_tsv('data/metadata/sample_metadata.tsv')
+sample_metadata <- sample_metadata[sample_metadata$sample_id %in% colnames(ani_matrix), ]
 ```
 
 ## Closest refs to each sample
@@ -132,7 +135,7 @@ contextual_ref_meta_paths <- list.files(path = 'data/selections/selected', patte
 mapping_ref_meta_paths <- list.files(path = 'data/selections/selected', pattern = '_mapping_references\\.tsv$', full.names = TRUE)
 downloaded_ref_meta_paths <- list.files(path = 'data/selections/downloaded', full.names = TRUE)
 
-contextual_ref_meta <- map_dfr(core_ref_meta_paths, function(path) {
+contextual_ref_meta <- map_dfr(contextual_ref_meta_paths, function(path) {
   out <- suppressMessages(read_tsv(path, col_names = 'reference_id'))
   out$group_id = sub(basename(path), pattern = '^(mutation_[0-9]+)_.+$', replacement = '\\1')
   out$ref_type = 'core'
@@ -146,6 +149,7 @@ mapping_ref_meta <- map_dfr(mapping_ref_meta_paths, function(path) {
   out$ref_type = 'mapping'
   return(out)
 })
+
 downloaded_ref_meta <- map_dfr(downloaded_ref_meta_paths, function(path) {
   tibble(
     reference_id = suppressMessages(read_tsv(path))$reference_id,
@@ -160,7 +164,7 @@ downloaded_ref_meta <- map_dfr(downloaded_ref_meta_paths, function(path) {
 ## Parse reference metadata
 
 ```{r}
-meta_json_path <- "data/downloads/ncbi_dataset/data/assembly_data_report.jsonl"
+meta_json_path <- "data/metadata/assembly_data_report.jsonl"
 metadata <- map_dfr(readLines(meta_json_path), function(line) {
   assem_data <- RcppSimdJson::fparse(line, always_list = TRUE)[[1]]
     attributes <- assem_data$assemblyInfo$biosample$attributes
@@ -198,17 +202,17 @@ genus_prefix_pattern <- paste0(genus_prefixes, collapse = '|')
 binomial_pattern <- paste0('^((?:', genus_prefix_pattern, ')?) ?([a-zA-Z0-9.]+) ?([a-zA-Z0-9.]+) ?(.*)$')
 metadata$species <- trimws(gsub(metadata$organism_name, pattern = binomial_pattern, replacement = '\\1 \\2 \\3', ignore.case = TRUE))
 metadata$genus <- trimws(gsub(metadata$organism_name, pattern = binomial_pattern, replacement = '\\1 \\2', ignore.case = TRUE))
-metadata$sample_ani <- ani_matrix[metadata$accession, 'sample']
+metadata$reference_id
 ```
+
 
 ## Add info on selected references 
 
 ```{r}
-
-metadata$is_downloaded <- metadata$accession %in% downloaded_ref_ids
-metadata$is_contextual <- metadata$accession %in% contextual_ref_ids
+metadata$is_downloaded <- metadata$reference_id %in% downloaded_ref_meta$reference_id
+metadata$is_contextual <- metadata$reference_id %in% contextual_ref_meta$reference_id
+metadata$is_mapping <- metadata$reference_id %in% mapping_ref_meta$reference_id
 ```
-
 
 
 ## Score available references on desireablity
@@ -266,7 +270,21 @@ metadata <- metadata[! duplicated(id_number_part), ]
 ## Plot 
 
 ```{r}
-plotted_cols <- setNames(c('Downloaded', 'Contextual', 'Sample ANI', priority_cols), c('is_downloaded', 'is_contextual', 'sample_ani', names(priority_cols)))
+sample_metadata$isolate_id <- sub(sample_metadata$sample_id, pattern = '24_A_O_TC_([0-9]+)_L.*', replacement = '\\1')
+sample_metadata$treatment <- sub(sample_metadata$report_group_ids, pattern = 'div_(.+)', replacement = '\\1')
+sample_metadata$treatment <- sub(sample_metadata$treatment, pattern = '_', replacement = '.')
+sample_metadata$treatment[sample_metadata$treatment == "report.group1"] <- NA
+sample_metadata$treatment <- as.numeric(sample_metadata$treatment)
+sample_metadata$display_name <- paste0(sample_metadata$isolate_id, ' (', sample_metadata$treatment, ')')
+sample_metadata <- sample_metadata[order(sample_metadata$treatment, sample_metadata$isolate_id, na.last = FALSE), ]
+
+metadata[sample_metadata$sample_id] <- lapply(sample_metadata$sample_id, function(id) {
+  unlist(ani_matrix[id, , drop = TRUE])[metadata$accession]
+})
+
+plotted_cols <- setNames(
+  c('Downloaded', 'Contextual', 'Mapping', sample_metadata$display_name, priority_cols),
+  c('is_downloaded', 'is_contextual', 'is_mapping', sample_metadata$sample_id, names(priority_cols)))
 plot_data <- map_dfr(names(plotted_cols), function(col) {
   values <- metadata[[col]]
   if (is.logical(values)) {
@@ -285,6 +303,7 @@ plot_data <- map_dfr(names(plotted_cols), function(col) {
     color_scale <- viridis::viridis(4, begin = 0.1, end = 0.9)
     color <- color_scale[as.numeric(values)]
   }
+  print(col)
   tibble(
     id = metadata$accession,
     name = metadata$organism_name,
@@ -302,7 +321,7 @@ plot_data$display_name <- factor(plot_data$display_name, levels = rev(unique(plo
 
 
 ref_selection_plot <- plot_data %>%
-  filter(priority <= 50) %>%
+  filter(priority <= 50 | id %in% metadata$accession[metadata$is_mapping | metadata$is_contextual | metadata$is_downloaded] ) %>%
   ggplot(aes(x = display_col, y = display_name, fill = color, label = text)) +
   geom_tile() +
   geom_text(

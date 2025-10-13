@@ -2,7 +2,7 @@ library(readr)
 library(ggplot2)
 library(tidyr)
 library(dplyr)
-
+library(extrafont)
 
 # Reads previously parsed data on performance
 genome_size_data <- read_csv('results/genome_size/performance_stats_genome_size.csv')
@@ -11,7 +11,8 @@ genome_size_metadata <- read_csv('metadata/genome_size/accessions_subset_info.cs
 
 # Add organisms type column
 genome_size_data$organism_type <- genome_size_metadata$domain[match(genome_size_data$organism, genome_size_metadata$organism)]
-sample_size_data$organism_type <- 'prokaryote'
+genome_size_data$organism_type <- tools::toTitleCase(genome_size_data$organism_type)
+sample_size_data$organism_type <- 'Prokaryote'
 
 # Add value columns for y axis
 genome_size_data$value <- genome_size_metadata$ncbi_genome_estimate[match(genome_size_data$organism, genome_size_metadata$organism)]
@@ -46,37 +47,49 @@ combined_data_long <- combined_data %>%
     metric = factor(metric,
                     levels = c("clock_hours", "max_rss_gb"),
                     labels = c("Run time (hours)", "Max RAM (GB)")),
-    factor = factor(factor, levels = c("Number of samples", "Genome size (Mb)"))
+    factor = factor(factor, levels = c("Number of samples", "Genome size (Mb)"), ordered = TRUE)
+  )
+
+
+text_data = data.frame(
+  factor = c("Number of samples", "Genome size (Mb)", "Number of samples", "Genome size (Mb)"),
+  metric = c("clock_hours", "clock_hours", "max_rss_gb", "max_rss_gb"),
+  label = c("A", "C", "B", "D")
+) %>%
+  mutate(
+    metric = factor(metric,
+                    levels = c("clock_hours", "max_rss_gb"),
+                    labels = c("Run time (hours)", "Max RAM (GB)")),
+    factor = factor(factor, levels = c("Number of samples", "Genome size (Mb)"), ordered = TRUE)
   )
 
 # Create the faceted plot
+loadfonts(device = "pdf")
 output <- ggplot(combined_data_long, aes(x = value, y = measurement, color = organism_type)) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = "lm", se = FALSE, formula = y ~ x) +
   facet_grid(rows = vars(metric), cols = vars(factor), scales = "free", switch = "both") +
   geom_text(
-    data = data.frame(
-      factor = c("Number of samples", "Genome size (Mb)", "Number of samples", "Genome size (Mb)"),
-      metric = c("Run time (hours)", "Run time (hours)", "Max RAM (GB)", "Max RAM (GB)"),
-      label = c("A", "B", "C", "D")
-    ),
+    data = text_data,
     mapping = aes(x = -Inf, y = Inf, label = label),
-    hjust = -0.1, vjust = 1.1,
+    hjust = -0.5, vjust = 1.5,
+    size = 4,
     inherit.aes = FALSE
   ) +
-  scale_color_manual(values = c("eukaryote" = "#1f78b4", "prokaryote" = "#33a02c")) +
+  scale_color_manual(values = c("Eukaryote" = "#1f78b4", "Prokaryote" = "#33a02c")) +
   labs(
     x = NULL,
     y = NULL,
-    color = "Organism"
+    color = "Sample type:"
   ) +
-  theme_bw(base_size = 12) +
+  theme_bw(base_size = 12, base_family = "DejaVu Sans") +
   theme(
     legend.position = "bottom",
-    panel.grid.minor = element_blank(),
+    panel.grid = element_blank(),
     strip.background = element_blank(),
     strip.placement = "outside",
   )
 
 # Save plot
-ggsave(output, filename = 'combine_benchmarking_plot.pdf', path = 'results', width = 8, height = 8)
+ggsave(output, filename = 'Figure4_benchmark_plots_sample_size_run_time_maxrss.pdf', path = 'results', width = 7, height = 5)
+ggsave(output, filename = 'Figure4_benchmark_plots_sample_size_run_time_maxrss.png', path = 'results', width = 7, height = 5)
