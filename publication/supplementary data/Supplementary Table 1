@@ -1,1 +1,22 @@
+**Supplementary Table 1.** Modules and module updates contributed to nf-core as part of the PathogenSurveillance pipeline development. 
+
+Nf-core module	Status	Actions
+bbmap/sendsketch	New	Added new module
+busco/download	New	Added new module
+graphtyper/genotype	New	Added new module 
+graphtyper/vcf_concatenate	New	Added new module
+khmer/trimlowabund	New	Added new module
+seqkit/head	New	Added new module
+vcflib/vcffilter	New
+	Added new module
+busco/busco	Update	Added single copy sequence files to the usable output files
+gatk4/variantfiltration	Update	Allowed for the use of compressed reference files
+iqtree	Update	Allowed for the use of multiple input alignments
+pirate	Update	Allowed for the use of GFF3 files and updated dependencies
+sourmash/compare	Update	Modified script to name output by prefix and updated dependencies
+sourmash/gather	Update
+	Created new unit tests
+sourmash/taxannotate	Update	Created new unit tests
+tabix/bgzip	Update	Made index file parameter detection more robust
+
 
