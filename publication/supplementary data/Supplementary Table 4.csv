@@ -1,0 +1,44 @@
+﻿"Supplementary Table 4. Genbank accessions of samples belonging to both prokaryotes and eukaryotes. The associated reads were processed by the PathogenSurveillance pipeline for validation used in Figure 4C, D.",,,,,
+Sample_ID,NCBI SRA accession,Bioproject,Species,Kingdom,Sequence type
+Celg1,SRR28479892,PRJNA1091400,Caenorhabditis elegans,Anamalia,Illumina
+Celg2,SRR28479941,PRJNA1091400,Caenorhabditis elegans,Anamalia,Illumina
+Celg3,SRR28479942,PRJNA1091400,Caenorhabditis elegans,Anamalia,Illumina
+Brady1,SRR17382571,PRJNA793169,Bradyrhizobium japonicum,Bacteria,Illumina
+Brady2,SRR17382844,PRJNA793169,Bradyrhizobium japonicum,Bacteria,Illumina
+Brady3,SRR17388438,PRJNA793169,Bradyrhizobium japonicum,Bacteria,Illumina
+Limo1,ERR12342572,PRJEB70875,Limosilactobacillus fermentum,Bacteria,Illumina
+Limo2,SRR18850315,PRJNA830347,Limosilactobacillus fermentum,Bacteria,Illumina
+Limo3,SRR18850317,PRJNA830347,Limosilactobacillus fermentum,Bacteria,Illumina
+Pseudo1,SRR33648670,PRJNA1225923,Pseudomonas aeruginosa,Bacteria,Illumina
+Pseudo2,SRR32466794,PRJNA1225923,Pseudomonas aeruginosa,Bacteria,Illumina
+Pseudo3,SRR33648579,PRJNA1225923,Pseudomonas aeruginosa,Bacteria,Illumina
+Solivo1,SRR9661589,PRJNA553182,Streptomyces olivochromogenes,Bacteria,Illumina
+Solivo2,SRR9661590,PRJNA553182,Streptomyces olivochromogenes,Bacteria,Illumina
+Solivo3,SRR9661593,PRJNA553182,Streptomyces olivochromogenes,Bacteria,Illumina
+Xan1,SRR28281444,PRJNA991976 ,Xanthomonas hortorum pv pelargonii,Bacteria,Illumina
+Xan2,SRR28281445,PRJNA991976 ,Xanthomonas hortorum pv pelargonii,Bacteria,Illumina
+Xan3 ,SRR28281439,PRJNA991976 ,Xanthomonas hortorum pv pelargonii,Bacteria,Illumina
+Fus1,SRR21509025,PRJNA878477,Fusarium oxysporum f  sp niveum,Fungi,Illumina
+Fus2,SRR21509023,PRJNA878477,Fusarium oxysporum f  sp niveum,Fungi,Illumina
+Fus3,SRR21509022,PRJNA878477,Fusarium oxysporum f  sp niveum,Fungi,Illumina
+Umay1,SRR12990819,PRJNA674756,Ustilago maydis,Fungi,Illumina
+Umay2,SRR12990820,PRJNA674756,Ustilago maydis,Fungi,Illumina
+Umay3,SRR12990821,PRJNA674756,Ustilago maydis,Fungi,Illumina
+Athal1,SRR21871460,PRJNA887677 ,Arabidopsis thaliana,Plantae,Illumina
+Athal2,SRR21871466,PRJNA887677 ,Arabidopsis thaliana,Plantae,Illumina
+Athal3,SRR21871467,PRJNA887677 ,Arabidopsis thaliana,Plantae,Illumina
+Csativus1,SRR25709139,PRJNA1007410,Cucumis sativus,Plantae,Illumina
+Csativus2,SRR25709141,PRJNA1007410,Cucumis sativus,Plantae,Illumina
+Csativus3,SRR25709138,PRJNA1007410,Cucumis sativus,Plantae,Illumina
+Otauri1,ERR5417781,PRJEB43294,Ostreococcus tauri,Protista,Illumina
+Otauri2,ERR5417780,PRJEB43294,Ostreococcus tauri,Protista,Illumina
+Otauri3,ERR5417779,PRJEB43294,Ostreococcus tauri,Protista,Illumina
+Plas1,SRR32867107,PRJNA1242290,Plasmodium vivax,Protista,Illumina
+Plas2,SRR32867100,PRJNA1242290,Plasmodium vivax,Protista,Illumina
+Plas3,SRR32867098,PRJNA1242290,Plasmodium vivax,Protista,Illumina
+Pcap1,SRR13176614,PRJNA481983 ,Phytophthora capsici,Stramenopila,Illumina
+Pcap2,SRR8259121,PRJNA505815 ,Phytophthora capsici,Stramenopila,Illumina
+Pcap3,SRR5944957,PRJNA386483,Phytophthora capsici,Stramenopila,Illumina
+Pram1,SRR16939097,PRJNA780196 ,Phytophthora ramorum,Stramenopila,Illumina
+Pram2,SRR16939100,PRJNA780196 ,Phytophthora ramorum,Stramenopila,Illumina
+Pram3,SRR16939107,PRJNA780196 ,Phytophthora ramorum,Stramenopila,Illumina
