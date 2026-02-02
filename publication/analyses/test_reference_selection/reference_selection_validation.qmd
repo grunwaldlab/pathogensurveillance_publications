@@ -1,0 +1,339 @@
+---
+title: "Validating pathogensurveillance reference selection"
+format: html
+editor: source
+params:
+  input: '/home/fosterz/projects/pathogensurveillance/test_profiles_out/test_bacteria'
+  report_id: 'all'
+  download_cache_dir: './download_cache'
+  output_dir: './reference_selection_validation_results'
+---
+
+```{r}
+library(RcppSimdJson)
+library(purrr)
+library(tibble)
+library(dplyr)
+library(ggplot2)
+library(viridis)
+library(PathoSurveilR)
+library(readr)
+```
+
+## Required command line software
+
+The NCBI `datasets` CLI and `sourmash` are needed to run this analysis.
+The code below creates and activates a `conda` environment with this software.
+
+```{bash}
+#| eval: false
+conda create -n ps_reference_selection_validation conda-forge::ncbi-datasets-cli bioconda::sourmash=4.9.4
+conda activate ps_reference_selection_validation
+```
+
+
+##
+
+```{r}
+PathoSurveilR::print_ps_outputs(params$input)
+
+
+downloaded_ref_metadata <- find_ps_data(params$input, target = 'downloaded_ref_metadata', simplify = TRUE)
+sample_metadata <- find_ps_data(params$input, target = 'sample_metadata', simplify = TRUE)
+ncbi_assembly_metadata <- find_ps_data(params$input, target = 'ncbi_assembly_metadata', simplify = TRUE)
+```
+
+Filter data to just the samples in this report ID. 
+
+```{r}
+ani_matrix_path_data <- find_ps_paths(params$input, target = 'ani_matrix_csv')
+ani_matrix_path <- ani_matrix_path_data$path[ani_matrix_path_data$report_id == params$report_id]
+ani_matrix <- find_ps_data(ani_matrix_path, target = 'ani_matrix_csv', simplify = TRUE)
+sample_metadata <- sample_metadata[sample_metadata$sample_id %in% colnames(ani_matrix), , drop = FALSE]
+downloaded_ref_metadata <- downloaded_ref_metadata[downloaded_ref_metadata$sample_id %in% sample_metadata$sample_id, , drop = FALSE]
+
+
+```
+
+
+
+## Prepare input data
+
+```{bash}
+#| eval: false
+mkdir -p data/downloads/
+mkdir -p data/assemblies/references
+mkdir -p data/assemblies/samples
+mkdir -p data/metadata
+datasets download genome taxon 1240483 --filename data/downloads/reference_assemblies_download.zip
+unzip data/downloads/reference_assemblies_download.zip -d data/downloads
+mv data/downloads/ncbi_dataset/data/**/*.fna data/assemblies/references/
+mv data/downloads/ncbi_dataset/data/assembly_data_report.jsonl data/metadata/
+rm -rf data/downloads
+rsync -avL fosterz@hpc.cqls.oregonstate.edu:/nfs7/BPP/Chang_Lab/Upasana/collaborations/pipeline/illumina_simulated_reads/sept17_2025_output/assemblies/spades/*scaffolds.fa.gz data/assemblies/samples/
+```
+
+
+## Sketch
+
+```{bash}
+mkdir -p data/signatures/references
+mkdir -p data/signatures/samples
+sourmash sketch dna --param-string 'scaled=1000,k=21,k=31,k=51' --outdir data/signatures/references data/assemblies/references/*
+sourmash sketch dna --param-string 'scaled=1000,k=21,k=31,k=51' --outdir data/signatures/samples data/assemblies/samples/*
+```
+
+
+## Compare
+
+```{bash}
+sourmash compare -k 31 --ani --csv data/ani_matrix.csv --output data/ani_matrix.npy data/signatures/*/*
+```
+
+## Parse ANI matrix from Sourmash
+
+```{r}
+ani_matrix <- read.csv('data/ani_matrix.csv', header = TRUE, check.names = FALSE)
+colnames(ani_matrix) <- sub(colnames(ani_matrix), pattern = '^data/assemblies/references/(.+?\\.[0-9])_.+$', replacement = '\\1')
+colnames(ani_matrix) <- sub(colnames(ani_matrix), pattern = '^data/assemblies/samples/(.+?)\\.scaffolds\\.fa\\.gz$', replacement = '\\1')
+colnames(ani_matrix) <- sub(colnames(ani_matrix), pattern = '^data/assemblies/samples/(.+?)\\.assembly\\.fasta\\.gz$', replacement = '\\1')
+rownames(ani_matrix) <- colnames(ani_matrix)
+```
+
+
+
+
+## Parse sample metadata
+
+```{r}
+sample_metadata <- read_tsv('data/metadata/sample_metadata.tsv')
+sample_metadata <- sample_metadata[sample_metadata$sample_id %in% colnames(ani_matrix), ]
+```
+
+## Closest refs to each sample
+
+```{r}
+n_best = 10
+closet_ref_data <- map_dfr(sample_metadata$sample_id, function(sample_id) {
+  ref_ani <- unlist(ani_matrix[sample_id, ! colnames(ani_matrix) %in% sample_metadata$sample_id])
+  ref_ani <- ref_ani[startsWith(names(ref_ani), 'GCA_')]
+  best_ref_ani <- sort(ref_ani, decreasing = TRUE)[1:n_best]
+  best_refs <- paste0(names(best_ref_ani), ' (', round(best_ref_ani, 3), ')')
+  mutation_rate <- as.numeric(sub(sub(sample_id, pattern = '.+?(0_?[0-9]*)$', replacement = '\\1'), pattern = '_', replacement = '.'))
+  sid <- sub(sample_id, pattern = '(.+?)(0_?[0-9]*)$', replacement = '\\1')
+  out <- c(sid, mutation_rate, best_refs)
+  names(out) <- c('sample', 'div', '1st', '2nd', '3rd',  paste0(4:n_best, 'th'))
+  out
+})
+write_tsv(closet_ref_data, file = 'results/closest_refs.tsv')
+```
+
+Parse selected reference data
+
+```{r}
+contextual_ref_meta_paths <- list.files(path = 'data/selections/selected', pattern = '_core_references\\.tsv$', full.names = TRUE)
+mapping_ref_meta_paths <- list.files(path = 'data/selections/selected', pattern = '_mapping_references\\.tsv$', full.names = TRUE)
+downloaded_ref_meta_paths <- list.files(path = 'data/selections/downloaded', full.names = TRUE)
+
+contextual_ref_meta <- map_dfr(contextual_ref_meta_paths, function(path) {
+  out <- suppressMessages(read_tsv(path, col_names = 'reference_id'))
+  out$group_id = sub(basename(path), pattern = '^(mutation_[0-9]+)_.+$', replacement = '\\1')
+  out$ref_type = 'core'
+  return(out)
+})
+
+mapping_ref_meta <- map_dfr(mapping_ref_meta_paths, function(path) {
+  out <- suppressMessages(read_tsv(path, col_names = c('sample_id', 'reference_id')))
+  # out <- out[, 'reference_id', drop = FALSE]
+  out$group_id = sub(basename(path), pattern = '^(mutation_[0-9]+)_.+$', replacement = '\\1')
+  out$ref_type = 'mapping'
+  return(out)
+})
+
+downloaded_ref_meta <- map_dfr(downloaded_ref_meta_paths, function(path) {
+  tibble(
+    reference_id = suppressMessages(read_tsv(path))$reference_id,
+    sample_id = sub(basename(path), pattern = '\\.tsv$', replacement = ''),
+    ref_type = 'downloaded'
+  )
+})
+```
+
+
+
+## Parse reference metadata
+
+```{r}
+meta_json_path <- "data/metadata/assembly_data_report.jsonl"
+metadata <- map_dfr(readLines(meta_json_path), function(line) {
+  assem_data <- RcppSimdJson::fparse(line, always_list = TRUE)[[1]]
+    attributes <- assem_data$assemblyInfo$biosample$attributes
+    hosts <- paste0(attributes$value[attributes$name == 'host'], collapse = ';')
+    data_parts <- list(
+        reference_id = gsub(assem_data$accession, pattern = '[\\/:*?"<>| .]', replacement = '_'),
+        accession = assem_data$accession,
+        assembly_level = assem_data$assemblyInfo$assemblyLevel,
+        assembly_status = assem_data$assemblyInfo$assemblyStatus,
+        assembly_type = assem_data$assemblyInfo$assemblyType,
+        hosts = ifelse(hosts == '', NA_character_, hosts),
+        organism_name = gsub(assem_data$organism$organismName, pattern = '\\[|\\]', replacement = ''),
+        tax_id = as.character(assem_data$organism$taxId),
+        contig_l50 = as.numeric(assem_data$assemblyStats$contigL50),
+        contig_n50 = as.numeric(assem_data$assemblyStats$contigN50),
+        coverage = as.numeric(sub(assem_data$assemblyStats$genomeCoverage, pattern = 'x$', replacement = '')),
+        number_of_component_sequences = as.numeric(assem_data$assemblyStats$numberOfComponentSequences),
+        number_of_contigs = as.numeric(assem_data$assemblyStats$numberOfContigs),
+        total_ungapped_length = as.numeric(assem_data$assemblyStats$totalUngappedLength),
+        total_sequence_length = as.numeric(assem_data$assemblyStats$totalSequenceLength),
+        source_database = assem_data$sourceDatabase,
+        is_type = "typeMaterial" %in% names(assem_data),
+        is_annotated = "annotationInfo" %in% names(assem_data),
+        is_atypical = "atypical" %in% names(assem_data$assembly_info),
+        checkm_completeness = assem_data$checkmInfo$completeness,
+        checkm_contamination = assem_data$checkmInfo$contamination
+    )
+    data_parts[sapply(data_parts, length) == 0 | sapply(data_parts, is.null)] <- NA
+    output <- as_tibble(data_parts)
+})
+metadata$organism_name <- gsub(metadata$organism_name, pattern = '[', replacement = '', fixed = TRUE)
+metadata$organism_name <- gsub(metadata$organism_name, pattern = ']', replacement = '', fixed = TRUE)
+genus_prefixes <- c('Candidatus')
+genus_prefix_pattern <- paste0(genus_prefixes, collapse = '|')
+binomial_pattern <- paste0('^((?:', genus_prefix_pattern, ')?) ?([a-zA-Z0-9.]+) ?([a-zA-Z0-9.]+) ?(.*)$')
+metadata$species <- trimws(gsub(metadata$organism_name, pattern = binomial_pattern, replacement = '\\1 \\2 \\3', ignore.case = TRUE))
+metadata$genus <- trimws(gsub(metadata$organism_name, pattern = binomial_pattern, replacement = '\\1 \\2', ignore.case = TRUE))
+metadata$reference_id
+```
+
+
+## Add info on selected references 
+
+```{r}
+metadata$is_downloaded <- metadata$reference_id %in% downloaded_ref_meta$reference_id
+metadata$is_contextual <- metadata$reference_id %in% contextual_ref_meta$reference_id
+metadata$is_mapping <- metadata$reference_id %in% mapping_ref_meta$reference_id
+```
+
+
+## Score available references on desireablity
+
+```{r}
+is_ambiguous <- function(x) {
+    ambiguous_words <- c(
+        'uncultured',
+        'unknown',
+        'incertae sedis',
+        'sp\\.',
+        'cf\\.',
+        'endosymbiont',
+        'symbiont',
+        'bacterium'
+    )
+    ambiguous_pattern <- paste0('\\b', ambiguous_words, '\\b', collapse = '|')
+    grepl(x, pattern = ambiguous_pattern, ignore.case = TRUE)
+}
+is_latin_binomial <- function(x) {
+    grepl(x, pattern = '^[a-zA-Z]+ [a-zA-Z]+($| ).*$') & ! is_ambiguous(x)
+}
+
+metadata$is_typical <-  metadata$is_atypical == FALSE
+metadata$is_refseq <- metadata$source_database == 'SOURCE_DATABASE_REFSEQ'
+metadata$is_bionomial <- is_latin_binomial(metadata$species)
+metadata$assembly_level <- factor(metadata$assembly_level, levels = c("Contig", "Scaffold", "Chromosome", "Complete Genome"), labels = c('Co', 'S', 'Ch', 'G'), ordered = TRUE)
+metadata$purity <- 100 - metadata$checkm_contamination
+
+
+priority_cols <- c(
+  is_typical         = "Is Typical",
+  is_type            = "Is Type Strain",
+  is_refseq          = "Is RefSeq Reference",
+  is_bionomial       = "Has Species Epithet",
+  is_annotated       = "Is Annotated",
+  assembly_level     = "Assembly Level",
+  checkm_completeness = "Completeness (%)",
+  purity             = "Purity (%)",
+  contig_l50         = "Contig L50",
+  coverage           = "Coverage (x)"
+)
+priority <- rev(do.call(what = order, args = metadata[names(priority_cols)]))
+metadata <- metadata[priority, ]
+
+# If both GCA and GCF are present, just show GCF
+id_number_part <- sub(metadata$accession, pattern = '^GC[AF]_', replacement = '')
+metadata <- metadata[! duplicated(id_number_part), ]
+
+```
+
+
+
+
+## Plot 
+
+```{r}
+sample_metadata$isolate_id <- sub(sample_metadata$sample_id, pattern = '24_A_O_TC_([0-9]+)_L.*', replacement = '\\1')
+sample_metadata$treatment <- sub(sample_metadata$report_group_ids, pattern = 'div_(.+)', replacement = '\\1')
+sample_metadata$treatment <- sub(sample_metadata$treatment, pattern = '_', replacement = '.')
+sample_metadata$treatment[sample_metadata$treatment == "report.group1"] <- NA
+sample_metadata$treatment <- as.numeric(sample_metadata$treatment)
+sample_metadata$display_name <- paste0(sample_metadata$isolate_id, ' (', sample_metadata$treatment, ')')
+sample_metadata <- sample_metadata[order(sample_metadata$treatment, sample_metadata$isolate_id, na.last = FALSE), ]
+
+metadata[sample_metadata$sample_id] <- lapply(sample_metadata$sample_id, function(id) {
+  unlist(ani_matrix[id, , drop = TRUE])[metadata$accession]
+})
+
+plotted_cols <- setNames(
+  c('Downloaded', 'Contextual', 'Mapping', sample_metadata$display_name, priority_cols),
+  c('is_downloaded', 'is_contextual', 'is_mapping', sample_metadata$sample_id, names(priority_cols)))
+plot_data <- map_dfr(names(plotted_cols), function(col) {
+  values <- metadata[[col]]
+  if (is.logical(values)) {
+    text <- ifelse(values, "✓", "✗")
+    color_scale <- viridis::viridis(2, begin = 0.1, end = 0.9)
+    color <- color_scale[as.numeric(values) + 1]
+  }
+  if (is.numeric(values)) {
+    text <- ifelse(is.na(values), '?', format(values, digits = 3))
+    color_scale <- viridis::viridis(1000, begin = 0.1, end = 0.9)
+    color <- color_scale[as.integer(rescale(values, to = c(1, 1000)))]
+    color[is.na(color)] <- '#999999FF'
+  }
+  if (is.factor(values)) {
+    text <- as.character(values)
+    color_scale <- viridis::viridis(4, begin = 0.1, end = 0.9)
+    color <- color_scale[as.numeric(values)]
+  }
+  print(col)
+  tibble(
+    id = metadata$accession,
+    name = metadata$organism_name,
+    priority = 1:nrow(metadata),
+    col = col,
+    text = text,
+    color = color
+  )
+})
+plot_data$display_col <- plotted_cols[plot_data$col]
+plot_data$display_col <- factor(plot_data$display_col, levels = plotted_cols, ordered = TRUE)
+plot_data$display_name <- paste0(plot_data$name, ' (', plot_data$id, ')')
+plot_data$display_name <- factor(plot_data$display_name, levels = rev(unique(plot_data$display_name)), ordered = TRUE)
+
+
+
+ref_selection_plot <- plot_data %>%
+  filter(priority <= 50 | id %in% metadata$accession[metadata$is_mapping | metadata$is_contextual | metadata$is_downloaded] ) %>%
+  ggplot(aes(x = display_col, y = display_name, fill = color, label = text)) +
+  geom_tile() +
+  geom_text(
+    size = 3, color = "black"
+  ) +
+  scale_fill_manual(values = setNames(plot_data$color, plot_data$color)) + 
+  scale_x_discrete(position = "top") +
+  labs(x = "Selection criteria", y = "Potential reference assemblies") + 
+  guides(fill = "none") +
+  theme(
+    axis.text.x = element_text(angle = 60, hjust = 0, vjust = 0.5)
+  )
+ref_selection_plot
+ggsave(ref_selection_plot, path = 'results', filename = 'plot.png', width = 8, height = 8)
+```
