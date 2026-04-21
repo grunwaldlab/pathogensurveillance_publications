@@ -43,6 +43,7 @@ if (!require("httr")) install.packages("httr")
 if (!require("progress")) install.packages("progress")
 if (!require("tibble")) install.packages("tibble")
 if (!require("readr")) install.packages("readr")
+if (!require("XML")) install.packages("XML")
 
 library(rentrez)
 library(dplyr)
@@ -53,11 +54,7 @@ library(httr)
 library(progress)
 library(tibble)
 library(readr)
-
-# Create cache directory
-if (!dir.exists(params$cache_dir)) {
-  dir.create(params$cache_dir, recursive = TRUE)
-}
+library(XML)
 
 # Set random seed
 set.seed(params$random_seed)
@@ -199,6 +196,7 @@ biosample_data <- map_dfr(assembly_data$biosample_id, function(biosample_id) {
     term = biosample_id,
     retmax = 1
   )
+  Sys.sleep(0.1)
   
   # Link to SRA
   sra_links <- entrez_link(
@@ -206,14 +204,26 @@ biosample_data <- map_dfr(assembly_data$biosample_id, function(biosample_id) {
     db = "sra",
     id = biosample_search$ids[1]
   )
+  Sys.sleep(0.1)
   
-  if (length(sra_links$links) == 0) {
+  # Subset to just those associated with a single SRA
+  if (length(sra_links$links) != 1) {
+    return(tibble())
+  }
+  
+  # Get Run accessions from SRA uids
+  sra_summary <- entrez_summary(db = "sra", id = sra_links$links$biosample_sra, always_return_list = TRUE)
+  
+  # Subset to just those associated with a single SRA run
+  run_acc_count <- nchar(sra_summary[[1]]$runs) - nchar(gsub("<", "", sra_summary[[1]]$runs))
+  if (length(sra_summary) != 1 || run_acc_count != 1) {
     return(tibble())
   }
   
   tibble(
     biosample_id = biosample_id, 
-    sra_id = sra_links$links$biosample_sra
+    sra_id = sra_links$links$biosample_sra,
+    ncbi_accession = xmlAttrs(xmlRoot(xmlParse(sra_summary[[1]]$runs, asText = TRUE)))['acc']
   )
 })
 
@@ -226,17 +236,17 @@ biosample_data <- filter(biosample_data, biosample_id %in% names(sra_counts[sra_
 ## Format output for use with pathogensurveilance
 
 ```{r}
-assembly_data <- left_join(assembly_data, biosample_data, by = 'biosample_id')
-sample_metadata <- filter(assembly_data, ! is.na(sra_id))
-sample_metadata$ncbi_accession <- sample_metadata$sra_id
+sample_metadata <- left_join(assembly_data, biosample_data, by = 'biosample_id')
+sample_metadata <- filter(sample_metadata, ! is.na(ncbi_accession))
 sample_metadata$name <- paste('Should be', sample_metadata$species_name)
 sample_metadata$description <- paste('Should be', sample_metadata$organism)
-sample_metadata$ref_group_ids <- 'disallowed_refs'
-
+sample_metadata$ref_group_ids <- gsub(sample_metadata$assembly_accession, pattern = '.', replacement = '_', fixed = TRUE)
+sample_metadata$ploidy <- ifelse(endsWith(sample_metadata$assembly_type, 'diploid'), 2, 1)
 
 reference_metadata <- tibble(
+  ref_id = sample_metadata$ref_group_ids,
   ref_group_ids = 'disallowed_refs',
-  ref_ncbi_accession = assembly_data$assembly_accession,
+  ref_ncbi_accession = sample_metadata$assembly_accession,
   ref_primary_usage = 'excluded',
   ref_contextual_usage = 'excluded'
 )
