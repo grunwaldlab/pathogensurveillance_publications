@@ -1,0 +1,37 @@
+# NCBI Assembly SRA Validation - Configuration Example
+# Copy this file to config.yml and customize for your analysis
+
+# Number of families to sample per kingdom
+families_per_kingdom: 10
+
+# Minimum additional assemblies per species (excluding type)
+min_assemblies_per_species: 5
+
+# Maximum assemblies to download metadata for per family
+# This prevents excessive API calls for very large families
+max_assemblies_per_family: 1000
+
+# Include RefSeq assemblies (GCF_ accessions)
+include_refseq: true
+
+# Include GenBank assemblies (GCA_ accessions)
+include_genbank: true
+
+# Random seed for reproducible sampling
+random_seed: 42
+
+# NCBI API key (get from https://account.ncbi.nlm.nih.gov/settings/)
+# Leaving blank will work but with lower rate limits
+api_key: ""
+
+# Directory to store cached API results
+cache_dir: "./cache"
+
+# Output file name
+output_file: "validation_results.tsv"
+
+# Example with API key and different parameters:
+# api_key: "your_actual_api_key_here"
+# families_per_kingdom: 5
+# min_assemblies_per_species: 3
+# max_assemblies_per_family: 500

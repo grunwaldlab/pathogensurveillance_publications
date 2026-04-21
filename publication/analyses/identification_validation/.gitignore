@@ -1,0 +1,26 @@
+# Cache directory - contains API results that shouldn't be committed
+cache/
+cache_*/
+
+# Output files - generated results
+*.tsv
+*.csv
+
+# RMarkdown outputs
+*.html
+*.pdf
+*_files/
+
+# R project files
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Keep example config but ignore actual config
+config.yml
+!config.yml.example

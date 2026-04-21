@@ -1,0 +1,251 @@
+---
+title: "NCBI Assembly and SRA Identification Validation"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+params:
+  families_per_kingdom:
+    label: "Number of families to sample per kingdom"
+    value: 100
+  min_assemblies_per_species:
+    label: "Minimum additional assemblies per species (excluding type)"
+    value: 5
+  max_assemblies_per_family:
+    label: "Maximum assemblies to download metadata for per family"
+    value: 100
+  random_seed:
+    label: "Random seed for reproducibility"
+    value: 42
+  output_path:
+    label: "Output folder name for results table"
+    value: "output"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  cache = TRUE,
+  cache.lazy = FALSE
+)
+
+# Load required libraries
+if (!require("rentrez")) install.packages("rentrez")
+if (!require("dplyr")) install.packages("dplyr")
+if (!require("purrr")) install.packages("purrr")
+if (!require("tidyr")) install.packages("tidyr")
+if (!require("jsonlite")) install.packages("jsonlite")
+if (!require("httr")) install.packages("httr")
+if (!require("progress")) install.packages("progress")
+if (!require("tibble")) install.packages("tibble")
+if (!require("readr")) install.packages("readr")
+
+library(rentrez)
+library(dplyr)
+library(purrr)
+library(tidyr)
+library(jsonlite)
+library(httr)
+library(progress)
+library(tibble)
+library(readr)
+
+# Create cache directory
+if (!dir.exists(params$cache_dir)) {
+  dir.create(params$cache_dir, recursive = TRUE)
+}
+
+# Set random seed
+set.seed(params$random_seed)
+```
+
+
+## Randomly sample `r params$families_per_kingdom` families from each kingdom
+
+Define the kingdom taxonomy IDs and retrieve family-level taxa for each kingdom.
+
+```{r kingdom_taxonomy}
+kingdoms <- c(
+  Fungi = 4751,
+  Bacteria = 2,
+  Plants = 33090,
+  Animals = 33208
+)
+
+family_data <- map_dfr(seq_along(kingdoms), function(i) {
+  search_result <- entrez_search(
+    db = "taxonomy",
+    term = sprintf("txid%s[Subtree] AND family[Rank]", kingdoms[i]),
+    retmax = 10000,
+  )
+  family_ids <- search_result$ids
+  if (length(family_ids) > params$families_per_kingdom) {
+    family_ids <- sample(family_ids, params$families_per_kingdom)
+  }
+
+  tibble(
+    kingdom_name = names(kingdoms)[i],
+    kingdom_id = kingdoms[i],
+    family_id = family_ids
+  )
+})
+```
+
+
+## Step 3: Download Assembly Metadata
+
+For each sampled family, download metadata for assemblies. Limit to `r params$max_assemblies_per_family` per family.
+
+```{r get_assemblies}
+assembly_data <- map_dfr(split(family_data, f = family_data$family_id), function(row) {
+  search_result <- entrez_search(
+    db = "assembly",
+    term = sprintf("txid%s[Organism] AND latest[Filter]", row$family_id),
+    retmax = params$max_assemblies_per_family
+  )
+
+  if (length(search_result$ids) == 0) {
+    return(tibble())
+  }
+  
+  # Fetch summary data in batches
+  batch_size <- 200
+  total_ids <- length(search_result$ids)
+  all_summaries <- list()
+  
+  for (i in seq(1, total_ids, by = batch_size)) {
+    end_idx <- min(i + batch_size - 1, total_ids)
+    batch_ids <- search_result$ids[i:end_idx]
+    
+    if (i > 1) Sys.sleep(0.1)
+    
+    summaries <- entrez_summary(db = "assembly", id = batch_ids)
+    all_summaries <- c(all_summaries, list(summaries))
+  }
+  
+  # Extract assembly metadata
+  assemblies_df <- map_dfr(all_summaries, function(summ) {
+    if (is.null(summ)) return(tibble())
+    
+    # Handle both single and multiple summary objects
+    if (inherits(summ, "esummary")) {
+      summ <- list(summ)
+    }
+    
+    map_dfr(summ, function(s) {
+      tibble(
+        assembly_uid = s$uid %||% NA_character_,
+        assembly_accession = s$assemblyaccession %||% NA_character_,
+        assembly_name = s$assemblyname %||% NA_character_,
+        organism = s$organism %||% NA_character_,
+        species_taxid = s$speciestaxid %||% NA_character_,
+        species_name = s$speciesname %||% NA_character_,
+        tax_id = s$taxid %||% NA_character_,
+        assembly_type = s$assemblytype %||% NA_character_,
+        biosample_id = s$biosampleid %||% NA_character_,
+        coverage = s$coverage %||% NA,
+        contig_n50 = s$contign50 %||% NA,
+        scaffold_n50 = s$scaffoldn50 %||% NA,
+        submission_date = s$submissiondate %||% NA_character_,
+        gbrs_paired_asm = s$gbrspairedasm %||% NA_character_,
+        refseq_category = s$refseq_category %||% NA_character_,
+        assembly_status = s$assemblystatus %||% NA_character_,
+        family_id = row$family_id,
+        kingdom_id = row$kingdom_id,
+        kingdom_name = row$kingdom_name
+      )
+    })
+  })
+
+  return(assemblies_df)
+})
+```
+
+
+## Filter for species with enough assemblies and a refseq assembly
+
+For each family, identify species that have:
+2. At least `r params$min_assemblies_per_species` additional assemblies
+
+```{r identify_candidates}
+species_count <- table(assembly_data$species_taxid)
+candidate_species <- names(species_count)
+candidate_species <- candidate_species[species_count >= params$min_assemblies_per_species]
+
+has_refseq <- map_lgl(candidate_species, function(species_id) {
+  any(assembly_data$refseq_category[assembly_data$species_taxid == species_id] == "reference genome")
+})
+candidate_species <- candidate_species[has_refseq]
+
+assembly_data <- filter(assembly_data, assembly_data$species_taxid %in% candidate_species)
+```
+
+
+## Get SRA accessions assocaited with biosamples
+
+For each candidate species, verify that the type assembly has SRA data linked to the same BioSample.
+
+```{r check_sra_links}
+biosample_data <- map_dfr(assembly_data$biosample_id, function(biosample_id) {
+  Sys.sleep(0.1)
+  
+  # Query SRA for this BioSample
+  biosample_search <- entrez_search(
+    db = "biosample",
+    term = biosample_id,
+    retmax = 1
+  )
+  
+  # Link to SRA
+  sra_links <- entrez_link(
+    dbfrom = "biosample",
+    db = "sra",
+    id = biosample_search$ids[1]
+  )
+  
+  if (length(sra_links$links) == 0) {
+    return(tibble())
+  }
+  
+  tibble(
+    biosample_id = biosample_id, 
+    sra_id = sra_links$links$biosample_sra
+  )
+})
+
+# Subset to just those associated with a single SRA
+sra_counts <- table(biosample_data$biosample_id) 
+biosample_data <- filter(biosample_data, biosample_id %in% names(sra_counts[sra_counts == 1]))
+```
+
+
+## Format output for use with pathogensurveilance
+
+```{r}
+assembly_data <- left_join(assembly_data, biosample_data, by = 'biosample_id')
+sample_metadata <- filter(assembly_data, ! is.na(sra_id))
+sample_metadata$ncbi_accession <- sample_metadata$sra_id
+sample_metadata$name <- paste('Should be', sample_metadata$species_name)
+sample_metadata$description <- paste('Should be', sample_metadata$organism)
+sample_metadata$ref_group_ids <- 'disallowed_refs'
+
+
+reference_metadata <- tibble(
+  ref_group_ids = 'disallowed_refs',
+  ref_ncbi_accession = assembly_data$assembly_accession,
+  ref_primary_usage = 'excluded',
+  ref_contextual_usage = 'excluded'
+)
+
+if (! dir.exists(params$output_path)) {
+  dir.create(params$output_path)
+}
+write_tsv(sample_metadata, file = file.path(params$output_path, "sample_metadata.tsv"))
+write_tsv(reference_metadata, file = file.path(params$output_path, "reference_metadata.tsv"))
+```
+
+
