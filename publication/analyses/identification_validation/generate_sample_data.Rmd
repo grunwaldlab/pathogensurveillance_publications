@@ -373,9 +373,15 @@ contaminated_reads <- c(
 no_quality_data <- c(
   'SRR8436401'
 )
+too_big <- c(
+  'SRR16947702'
+)
 sample_metadata$enabled[sample_metadata$ncbi_accession %in% contaminated_reads] <- FALSE
-sample_metadata$enabled[sample_metadata$ncbi_accession %in% no_quality_data] <- FALSE
 sample_metadata$notes[sample_metadata$ncbi_accession %in% contaminated_reads] <- 'Contaminated'
+sample_metadata$enabled[sample_metadata$ncbi_accession %in% no_quality_data] <- FALSE
+sample_metadata$notes[sample_metadata$ncbi_accession %in% no_quality_data] <- 'Lacks quality scorese in FASTQ'
+sample_metadata$enabled[sample_metadata$ncbi_accession %in% too_big] <- FALSE
+sample_metadata$notes[sample_metadata$ncbi_accession %in% too_big] <- 'Requires more RAM than available on testing system.'
 
 
 reference_metadata <- tibble(

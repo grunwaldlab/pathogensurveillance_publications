@@ -109,7 +109,10 @@ results <- map_dfr(report_input_dirs, function(path) {
       sourmash_top_correct_ref_ani <- NA
     }
     sample_ani_names <- reference_metadata$ref_name[match(names(sample_anis), reference_metadata$ref_id)]
-    sample_ani_names <- sample_ani_names[sample_ani_names %in% reference_metadata$ref_name[reference_metadata$ref_contextual_usage != 'excluded']]
+    not_excluded <- sample_ani_names %in% reference_metadata$ref_name[reference_metadata$ref_contextual_usage != 'excluded']
+    is_ambiguous <- is_ambiguous_taxon_name(sample_ani_names)
+    sample_ani_names <- sample_ani_names[not_excluded & ! is_ambiguous]
+    sample_anis <- sample_anis[not_excluded]
     sourmash_top_id = sample_ani_names[1]
     sourmash_top_ani = sample_anis[1]
   }
@@ -118,13 +121,10 @@ results <- map_dfr(report_input_dirs, function(path) {
   tibble(
     expected = sample_metadata$species,
     multigene_id = multigene_tree_id,
-    multigene_correct = startsWith(multigene_id, expected_species),
-    sourmash_top_id = sourmash_top_id,
-    sourmash_correct = startsWith(sourmash_top_id, expected_species),
-    sourmash_top_ani = sourmash_top_ani,
-    sourmash_top_correct_ref_ani = sourmash_top_correct_ref_ani,
+    sourmash_id = sourmash_top_id,
+    sourmash_ani = sourmash_top_ani,
+    sourmash_correct_ref_ani = sourmash_top_correct_ref_ani,
     sendsketch_id = sendsketch_results$taxName[1],
-    sendsketch_correct = startsWith(sendsketch_id, expected_species),
     sendsketch_top_ani = sendsketch_results$ANI[1],
     sendsketch_has_correct_species = any(startsWith(sendsketch_taxa$name, expected_species)),
     sendsketch_has_correct_genus = any(startsWith(sendsketch_taxa$name, expected_genus)),
@@ -134,9 +134,67 @@ results <- map_dfr(report_input_dirs, function(path) {
 
 
 ```{r}
-trees <- find_ps_data(pathsuriveil_output_dir, target = 'multigene_tree')
-names(trees) <- sub(basename(names(trees)), pattern = '^([a-zA-Z_]+)--.+$', replacement = '\\1')
-PathoSurveilR::plot_tree(pathsuriveil_output_dir, target = 'multigene_tree')
+library(ggsankey)
+library(dplyr)
+
+# Function to classify identification result
+classify_id <- function(id, expected) {
+  if (is.na(id)) {
+    return("Not run")
+  }
+  if (startsWith(id, expected)) {
+    return("Species correct")
+  }
+  expected_genus <- strsplit(expected, split = " +")[[1]][1]
+  if (startsWith(id, expected_genus)) {
+    return("Genus correct")
+  }
+  return("Incorrect")
+}
+
+# Prepare data for Sankey plot
+sankey_data <- results %>%
+  mutate(
+    sendsketch = map2_chr(sendsketch_id, expected, classify_id),
+    sourmash = map2_chr(sourmash_id, expected, classify_id),
+    multigene = map2_chr(multigene_id, expected, classify_id)
+  ) %>%
+  select(sendsketch, sourmash, multigene)
+
+# Reshape to long format for ggsankey
+sankey_long <- sankey_data %>%
+  make_long(sendsketch, sourmash, multigene)
+
+# Count occurrences for labels
+node_counts <- sankey_long %>%
+  group_by(x, node) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  mutate(label = paste0(node, "\n(n=", count, ")"))
+
+# Merge counts back
+sankey_long <- sankey_long %>%
+  left_join(node_counts, by = c("x", "node"))
+
+# Custom color mapping: Species correct = green, Genus correct = yellow, Incorrect/Not run = grey
+color_mapping <- c("Species correct" = "#2ca02c", "Genus correct" = "#FFD700", "Incorrect" = "#7f7f7f", "Not run" = "#7f7f7f")
+
+# Plot the Sankey diagram
+sankey_long %>%
+  mutate(
+    node = factor(node, levels = c("Not run", "Incorrect", "Genus correct", "Species correct"))
+  ) %>%
+  ggplot(aes(x = x, next_x = next_x, node = node, next_node = next_node, fill = node, label = label)) +
+  geom_sankey(flow.alpha = 0.6, node.color = "black", show.legend = FALSE) +
+  geom_sankey_label(size = 3, color = "black", fill = "white") +
+  scale_fill_manual(values = color_mapping) +
+  theme_minimal() +
+  labs(title = NULL, x = NULL, y = NULL) +
+  theme(
+    legend.position = "none",
+    panel.grid = element_blank(),
+    axis.text.y = element_blank(),
+    axis.text.x = element_text(size = 12)
+  )
 ```
 
 
