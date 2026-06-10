@@ -1,0 +1,142 @@
+---
+title: "Untitled"
+output: html_document
+date: "2026-05-28"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(PathoSurveilR)
+library(purrr)
+library(ape)
+library(tibble)
+
+pathsuriveil_output_dir <- 'output/pathsurveil_output'
+
+known_ps_outputs(pathsuriveil_output_dir)
+PathoSurveilR::print_ps_outputs(pathsuriveil_output_dir)
+```
+
+
+```{r}
+top_hits <- sendsketch_parsed(pathsuriveil_output_dir, only_best = TRUE)
+```
+
+
+```{r}
+find_ps_paths(pathsuriveil_output_dir, target = 'multigene_tree')
+```
+
+
+```{r}
+is_ambiguous_taxon_name <- function(taxon_names) {
+  # Get patterns to filter out
+  patterns <- c(".*\\bunknown.*", ".*\\bunidentified.*", ".*incertae[_ -]+sedis.*", 
+                ".*\\bambiguous\\b.*", ".*ambiguous[_ -]+taxa.*", ".*unassigned.*", 
+                ".*possible.*", ".*putative.*", ".*uncultured.*", ".*\\bcandidatus.*", 
+                ".*metagenome.*", ".*\\bsp\\..*", ".*\\bcf\\..*", ".*\\bendosymbiont.*" ,
+                ".*\\bsymbiont.*", ".*\\bbacterium\\b.*", ".*\\bgenomosp\\..*")
+  
+  # Find which taxa to filter out 
+  Reduce(`|`, lapply(patterns, function(x) {
+    grepl(taxon_names, pattern = x, ignore.case = TRUE)
+  }))
+}
+
+get_tips_by_distance <- function(tree, target_tip) {
+  # Check if target_tip exists in the tree
+  if (!target_tip %in% tree$tip.label) {
+    stop("Target tip not found in the tree")
+  }
+  
+  # Get all tip labels
+  all_tips <- tree$tip.label
+  
+  # Calculate cophenetic distances between all tips
+  dist_matrix <- cophenetic.phylo(tree)
+  
+  # Get distances from target tip to all other tips
+  distances <- dist_matrix[target_tip, ]
+  
+  # Sort tips by distance (excluding the target tip itself)
+  sorted_tips <- names(sort(distances[names(distances) != target_tip]))
+  
+  # Return the sorted list
+  return(sorted_tips)
+}
+
+report_input_dirs <- list.files(file.path(pathsuriveil_output_dir, 'report_group_data'), full.names = TRUE)
+results <- map_dfr(report_input_dirs, function(path) {
+  sample_metadata <- find_ps_data(path, target = 'sample_metadata')[[1]]
+  reference_metadata <- find_ps_data(path, target = 'reference_metadata')[[1]]
+  expected_species <- sample_metadata$species
+  expected_genus <- strsplit(sample_metadata$species, split = ' +')[[1]][1]
+  
+  # Get multigene tree closest species
+  if (is.null(find_ps_paths(path, target = 'multigene_tree', must_exist = FALSE))) {
+    multigene_tree_id <- NA_character_
+  } else {
+    tree <- find_ps_data(path, target = 'multigene_tree')[[1]]
+    ordered_tip_ids <- get_tips_by_distance(tree, sample_metadata$sample_id)
+    species_id_name_key <- c(sample_metadata$species, reference_metadata$ref_name)
+    names(species_id_name_key) <- c(sample_metadata$sample_id, reference_metadata$ref_id)
+    ordered_tip_names <- species_id_name_key[ordered_tip_ids]
+    is_ambiguous <- is_ambiguous_taxon_name(ordered_tip_names)
+    multigene_tree_id <- ordered_tip_names[!is_ambiguous][1]
+  }
+  
+  # Get sendsketch ids
+  sendsketch_results <- find_ps_data(path, target = 'sendsketch')[[1]]
+  sendsketch_taxa <- find_ps_data(path, target = 'sendsketch_taxa')[[1]]
+  
+  # Get sourmash ANI results
+  if (is.null(find_ps_paths(path, target = 'ani_matrix_csv', must_exist = FALSE))) {
+    sourmash_top_id <- NA_character_
+    sourmash_top_ani <- NA
+    sourmash_top_correct_ref_ani <- NA
+  } else {
+    ani_matrix <- find_ps_data(path, target = 'ani_matrix_csv')[[1]]
+    sample_anis <- sort(ani_matrix[sample_metadata$sample_id, ], na.last = TRUE, decreasing = TRUE)
+    sample_anis <- sample_anis[! names(sample_anis) %in% sample_metadata$sample_id]
+    refs_that_match_query <- reference_metadata$ref_id[startsWith(reference_metadata$ref_name, expected_species)]
+    if (length(refs_that_match_query) > 0) {
+      sourmash_top_correct_ref_ani <- sample_anis[names(sample_anis) %in% refs_that_match_query][1]
+    } else {
+      sourmash_top_correct_ref_ani <- NA
+    }
+    sample_ani_names <- reference_metadata$ref_name[match(names(sample_anis), reference_metadata$ref_id)]
+    sample_ani_names <- sample_ani_names[sample_ani_names %in% reference_metadata$ref_name[reference_metadata$ref_contextual_usage != 'excluded']]
+    sourmash_top_id = sample_ani_names[1]
+    sourmash_top_ani = sample_anis[1]
+  }
+  
+  # Format row for result table
+  tibble(
+    expected = sample_metadata$species,
+    multigene_id = multigene_tree_id,
+    multigene_correct = startsWith(multigene_id, expected_species),
+    sourmash_top_id = sourmash_top_id,
+    sourmash_correct = startsWith(sourmash_top_id, expected_species),
+    sourmash_top_ani = sourmash_top_ani,
+    sourmash_top_correct_ref_ani = sourmash_top_correct_ref_ani,
+    sendsketch_id = sendsketch_results$taxName[1],
+    sendsketch_correct = startsWith(sendsketch_id, expected_species),
+    sendsketch_top_ani = sendsketch_results$ANI[1],
+    sendsketch_has_correct_species = any(startsWith(sendsketch_taxa$name, expected_species)),
+    sendsketch_has_correct_genus = any(startsWith(sendsketch_taxa$name, expected_genus)),
+  )
+})
+```
+
+
+```{r}
+trees <- find_ps_data(pathsuriveil_output_dir, target = 'multigene_tree')
+names(trees) <- sub(basename(names(trees)), pattern = '^([a-zA-Z_]+)--.+$', replacement = '\\1')
+PathoSurveilR::plot_tree(pathsuriveil_output_dir, target = 'multigene_tree')
+```
+
+

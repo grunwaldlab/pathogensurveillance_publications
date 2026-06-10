@@ -24,3 +24,9 @@ Thumbs.db
 # Keep example config but ignore actual config
 config.yml
 !config.yml.example
+
+.nextflow
+.nextflow.log*
+path_surveil_data
+work
+intermediate

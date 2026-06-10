@@ -1,0 +1,396 @@
+---
+title: "NCBI Assembly and SRA Identification Validation"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+params:
+  families_per_kingdom:
+    label: "Number of families to sample per kingdom"
+    value: 100
+  min_assemblies_per_species:
+    label: "Minimum additional assemblies per species (excluding type)"
+    value: 5
+  max_assemblies_per_family:
+    label: "Maximum assemblies to download metadata for per family"
+    value: 10000
+  random_seed:
+    label: "Random seed for reproducibility"
+    value: 42
+  output_path:
+    label: "Output folder name for results table"
+    value: "output"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  cache = TRUE,
+  cache.lazy = FALSE
+)
+
+# Load required libraries
+library(rentrez)
+library(dplyr)
+library(purrr)
+library(tidyr)
+library(jsonlite)
+library(httr)
+library(progress)
+library(tibble)
+library(readr)
+library(XML)
+library(furrr)
+
+if (! dir.exists('intermediate')) {
+  dir.create('intermediate')
+}
+
+plan(multisession)
+```
+
+
+## Randomly sample `r params$families_per_kingdom` families from each kingdom
+
+Define the kingdom taxonomy IDs and retrieve family-level taxa for each kingdom.
+
+```{r kingdom_taxonomy}
+kingdoms <- c(
+  Fungi = 4751,
+  Bacteria = 2,
+  Plants = 33090,
+  Animals = 33208
+)
+
+family_data_cache_path <- 'intermediate/family_data.csv' 
+if (file.exists(family_data_cache_path)) {
+  family_data <- read_csv(family_data_cache_path)
+} else {
+  family_data <- map_dfr(seq_along(kingdoms), function(i) {
+    search_result <- entrez_search(
+      db = "taxonomy",
+      term = sprintf("txid%s[Subtree] AND family[Rank]", kingdoms[i]),
+      retmax = 10000,
+    )
+    family_ids <- search_result$ids
+    if (length(family_ids) > params$families_per_kingdom) {
+      family_ids <- sample(family_ids, params$families_per_kingdom)
+    }
+    
+    family_name <- unlist(map(split(family_ids, ceiling(seq_along(family_ids) / 50)), function(ids) {
+      result <- entrez_summary('taxonomy', id = ids)
+      map_chr(result, function(x) x$scientificname)
+    }))
+    
+    tibble(
+      kingdom_name = names(kingdoms)[i],
+      kingdom_id = kingdoms[i],
+      family_id = family_ids,
+      family = family_name
+    )
+  })
+  
+  write_csv(family_data, family_data_cache_path)
+}
+```
+
+
+## Download Assembly Metadata
+
+```{r}
+assembly_data_dir_path <- 'intermediate/assembly_data'
+if (! dir.exists(assembly_data_dir_path)) {
+  dir.create(assembly_data_dir_path, recursive = TRUE)
+}
+raw_assembly_data_paths <- map_chr(family_data$family_id, function(family_id) {
+  family_data_path <- file.path(assembly_data_dir_path, paste0(family_id, '.json'))
+  command <- paste0('datasets summary genome taxon --as-json-lines ', family_id, ' > ', family_data_path)
+  if (! file.exists(family_data_path)) {
+    system(command)
+  }
+  return(family_data_path)
+})
+```
+
+
+
+## Parse assembly metadata
+
+For each sampled family, download metadata for assemblies.
+
+```{r}
+parse_assembly_metadata <- function(in_path, out_path) {
+  # Add header to output file
+  header <- data.frame(
+    reference_id = character(0),
+    accession = character(0),
+    assembly_level = character(0),
+    assembly_status = character(0),
+    assembly_type = character(0),
+    hosts = character(0),
+    organism_name = character(0),
+    tax_id = character(0),
+    contig_l50 = numeric(0),
+    contig_n50 = numeric(0),
+    coverage = numeric(0),
+    number_of_component_sequences = numeric(0),
+    number_of_contigs = numeric(0),
+    total_ungapped_length = numeric(0),
+    total_sequence_length = numeric(0),
+    source_database = character(0),
+    is_type = logical(0),
+    is_annotated = logical(0),
+    is_atypical = logical(0),
+    checkm_completeness = numeric(0),
+    checkm_contamination = numeric(0),
+    sra_accession = character(0),
+    bioproject_id = character(0),
+    assembly_status = character(0),
+    associated_with_metagenome = logical(0),
+    biosample_id = character(0)
+  )
+  write.table(header, file = out_path, sep = '\t', quote = FALSE)
+  
+  # Parse and write assembly metadata one at a time
+  in_handle <- file(in_path)
+  open(in_handle)
+  out_handle <- file(out_path, open = 'a')
+  while (length(line <- readLines(in_handle, n = 1)) != 0) {
+    assem_data <- RcppSimdJson::fparse(line, always_list = TRUE)[[1]]
+    attributes <- assem_data$assembly_info$biosample$attributes
+    sample_data <- assem_data$assembly_info$biosample$sample_ids
+    hosts <- paste0(attributes$value[attributes$name == 'host'], collapse = ';')
+    data_parts <- list(
+      reference_id = gsub(assem_data$accession, pattern = '[\\/:*?"<>| .]', replacement = '_'),
+      accession = assem_data$accession,
+      assembly_level = assem_data$assembly_info$assembly_level,
+      assembly_status = assem_data$assembly_info$assembly_status,
+      assembly_type = assem_data$assembly_info$assembly_type,
+      hosts = ifelse(hosts == '', NA_character_, hosts),
+      organism_name = gsub(assem_data$organism$organism_name, pattern = '\\[|\\]', replacement = ''),
+      tax_id = as.character(assem_data$organism$tax_id),
+      contig_l50 = as.numeric(assem_data$assembly_stats$contig_l50),
+      contig_n50 = as.numeric(assem_data$assembly_stats$contig_n50),
+      coverage = as.numeric(sub(assem_data$assembly_stats$genome_coverage, pattern = 'x$', replacement = '')),
+      number_of_component_sequences = as.numeric(assem_data$assembly_stats$number_of_component_sequences),
+      number_of_contigs = as.numeric(assem_data$assembly_stats$number_of_contigs),
+      total_ungapped_length = as.numeric(assem_data$assembly_stats$total_ungapped_length),
+      total_sequence_length = as.numeric(assem_data$assembly_stats$total_sequence_length),
+      source_database = assem_data$source_database,
+      is_type = "type_material" %in% names(assem_data),
+      is_annotated = "annotation_info" %in% names(assem_data),
+      is_atypical = "atypical" %in% names(assem_data$assembly_info),
+      checkm_completeness = assem_data$checkm_info$completeness,
+      checkm_contamination = assem_data$checkm_info$contamination,
+      sra_accession = sample_data$value[!is.na(sample_data$db) & sample_data$db == "SRA"],
+      bioproject_id = assem_data$assembly_info$bioproject_accession,
+      assembly_status = assem_data$assembly_info$assembly_status,
+      associated_with_metagenome = grepl(line, pattern = 'metagenom', ignore.case = TRUE),
+      biosample_id = assem_data$assembly_info$biosample$accession
+    )
+    data_parts[sapply(data_parts, length) == 0 | sapply(data_parts, is.null)] <- NA
+    output <- as.data.frame(data_parts)
+    write.table(output, file = out_handle, sep = '\t', col.names = FALSE, row.names = FALSE, quote = FALSE)
+  }
+  close(out_handle)
+  close(in_handle)
+}
+
+all_assembly_data <- future_map_dfr(raw_assembly_data_paths, function(in_path) {
+  out_path <- sub(in_path, pattern = 'json$', replacement = 'tsv')
+  if (! file.exists(out_path)) {
+    parse_assembly_metadata(in_path, out_path)
+  }
+  read_tsv(out_path, show_col_types = FALSE, col_types = 'ccccccccnnnnnnnclllnncccl')
+})
+all_assembly_data
+```
+
+
+## Filter for species with enough assemblies and a refseq assembly
+
+For each family, identify species that have at least `r params$min_assemblies_per_species` assemblies, including one in RefSeq.
+
+```{r identify_candidates}
+is_ambiguous_taxon_name <- function(taxon_names, unknown = TRUE, uncultured = TRUE,
+                         name_regex = ".", ignore_case = TRUE) {
+  # Get patterns to filter out 
+  patterns <- c(".*unknown.*", ".*unidentified.*", ".*incertae[_ -]+sedis.*", 
+                ".*ambiguous.*", ".*ambiguous[_ -]+taxa.*", ".*unassigned.*", 
+                ".*possible.*", ".*putative.*", ".*uncultured.*", ".*candidatus.*", 
+                ".*metagenome.*", ".*sp\\..*", ".*cf\\..*", ".*endosymbiont.*" ,
+                ".*symbiont.*", ".*bacterium.*")
+  
+  # Find which taxa to filter out 
+  Reduce(`|`, lapply(patterns, function(x) {
+    grepl(taxon_names, pattern = x, ignore.case = ignore_case)
+  }))
+}
+
+all_assembly_data$is_latin_binomial <- grepl(all_assembly_data$organism_name, pattern = '^[a-zA-Z]+ [a-zA-Z]+( .*$|$)')
+all_assembly_data$species <- ifelse(all_assembly_data$is_latin_binomial, 
+                                    sub(all_assembly_data$organism_name, pattern = '(^[a-zA-Z]+ [a-zA-Z]+)( .*$|$)', replacement = '\\1'),
+                                    NA)
+all_assembly_data$is_valid_genus <- grepl(all_assembly_data$organism_name, pattern = '^([a-zA-Z]+) .*')
+all_assembly_data$genus <- ifelse(all_assembly_data$is_valid_genus,
+                                  sub(all_assembly_data$organism_name, pattern = '(^[a-zA-Z]+) .*', replacement = '\\1'),
+                                  NA)
+all_assembly_data$is_ambiguous <- is_ambiguous_taxon_name(all_assembly_data$organism_name)
+
+# Filter for one refseq assembly per species for species that have enough assemblies 
+assembly_data <- map_dfr(split(all_assembly_data, all_assembly_data$species), function(species_data) {
+  is_valid_query <- species_data$source_database == "SOURCE_DATABASE_REFSEQ" & species_data$is_latin_binomial & ! species_data$is_ambiguous & !is.na(species_data$biosample_id) & ! species_data$associated_with_metagenome & (is.na(species_data$checkm_contamination) | species_data$checkm_contamination < 5)
+  if (nrow(species_data) < params$min_assemblies_per_species || all(! is_valid_query)) {
+    return(NULL)
+  } else {
+    return(species_data[is_valid_query, , drop = FALSE])
+  }
+})
+
+# Filter for one assembly per genus
+genus_assembly_data <- map_dfr(split(assembly_data, assembly_data$genus), function(genus_data) {
+  genus_data[1, , drop = FALSE]
+})
+```
+
+
+
+## Get SRA accessions assocaited with biosamples
+
+For each candidate species, verify that the type assembly has SRA data linked to the same BioSample.
+
+```{r check_sra_links}
+get_biosample_data <- function(biosample_id) {
+    # Query SRA for this BioSample
+    biosample_search <- entrez_search(
+      db = "biosample",
+      term = biosample_id,
+      retmax = 1
+    )
+    Sys.sleep(0.1)
+    
+    # Link to SRA
+    sra_links <- entrez_link(
+      dbfrom = "biosample",
+      db = "sra",
+      id = biosample_search$ids[1]
+    )
+    Sys.sleep(0.1)
+    
+    # Subset to just those associated with a single SRA
+    if (length(sra_links$links) != 1 || length(sra_links$links$biosample_sra) != 1) {
+      return(tibble())
+    }
+    
+    # Get Run accessions from SRA uids
+    sra_summary <- entrez_summary(db = "sra", id = sra_links$links$biosample_sra, always_return_list = TRUE)
+    
+    # Subset to just those associated with a single SRA run
+    run_acc_count <- nchar(sra_summary[[1]]$runs) - nchar(gsub("<", "", sra_summary[[1]]$runs))
+    if (length(sra_summary) != 1 || run_acc_count != 1) {
+      return(tibble())
+    }
+    
+    tibble(
+      biosample_id = biosample_id, 
+      sra_id = sra_links$links$biosample_sra,
+      ncbi_accession = xmlAttrs(xmlRoot(xmlParse(sra_summary[[1]]$runs, asText = TRUE)))['acc'],
+      sra_tax_id = sub(sra_summary[[1]]$expxml, pattern = '.+Organism taxid="([0-9]+)".+', replacement = '\\1')
+    )
+}
+
+# Look up SRA accessions from biosample IDs
+biosample_data_cache_path <- 'intermediate/biosample_data.csv' 
+if (file.exists(biosample_data_cache_path)) {
+  biosample_data <- read_csv(biosample_data_cache_path)
+} else {
+  
+  biosample_data_raw <- list()
+  current_index <- 1
+  max_retries <- 5
+  retry_delay <- 1  # seconds
+  
+  while(current_index <= nrow(genus_assembly_data) && ! genus_assembly_data$biosample_id[current_index] %in% names(biosample_data_raw)) {
+    
+    biosample_id <- genus_assembly_data$biosample_id[current_index]
+    success <- FALSE
+    retry_count <- 0
+    
+    while(!success && retry_count < max_retries) {
+      tryCatch({
+        result <- get_biosample_data(biosample_id)
+        biosample_data_raw <- c(biosample_data_raw, setNames(list(result), biosample_id))
+        success <- TRUE
+      }, error = function(e) {
+        retry_count <<- retry_count + 1
+        message(sprintf("Error getting data for ID %s (attempt %d/%d): %s", 
+                        biosample_id, retry_count, max_retries, e$message))
+        
+        if(retry_count < max_retries) {
+          message(sprintf("Retrying in %d seconds...", retry_delay))
+          Sys.sleep(retry_delay)
+        } else {
+          warning(sprintf("Failed to retrieve data for ID %s after %d attempts", 
+                          biosample_id, max_retries))
+        }
+      })
+    }
+    current_index <- current_index + 1
+  }
+  
+  biosample_data <- do.call(rbind, biosample_data_raw)
+  
+  write_csv(biosample_data, file = biosample_data_cache_path)
+}
+```
+
+
+## Format output for use with pathogensurveilance
+
+```{r}
+sample_metadata <- inner_join(genus_assembly_data, biosample_data, by = 'biosample_id')
+sample_metadata <- filter(sample_metadata, is_latin_binomial)
+
+sample_metadata$name <- paste('Should be', sample_metadata$species)
+sample_metadata$description <- paste0('Should be ', sample_metadata$organism_name, ' (', sample_metadata$accession, ', ', sample_metadata$ncbi_accession, ')')
+sample_metadata$ref_group_ids <- gsub(sample_metadata$accession, pattern = '.', replacement = '_', fixed = TRUE)
+sample_metadata$ploidy <- ifelse(endsWith(sample_metadata$assembly_type, 'diploid'), 2, 1)
+sample_metadata$report_group_ids <- tolower(gsub(sample_metadata$species, pattern = ' ', replacement = '_'))
+
+
+set.seed(params$random_seed)
+sample_metadata <- sample_metadata[sample(1:nrow(sample_metadata)), , drop = FALSE]
+
+
+sample_metadata$notes <- ''
+sample_metadata$enabled <- TRUE
+contaminated_reads <- c(
+  'SRR24012843',
+  'SRR34542554',
+  'SRR24443145'
+)
+no_quality_data <- c(
+  'SRR8436401'
+)
+sample_metadata$enabled[sample_metadata$ncbi_accession %in% contaminated_reads] <- FALSE
+sample_metadata$enabled[sample_metadata$ncbi_accession %in% no_quality_data] <- FALSE
+sample_metadata$notes[sample_metadata$ncbi_accession %in% contaminated_reads] <- 'Contaminated'
+
+
+reference_metadata <- tibble(
+  ref_id = sample_metadata$ref_group_ids,
+  ref_group_ids = 'disallowed_refs',
+  ref_ncbi_accession = sample_metadata$accession,
+  ref_primary_usage = 'excluded',
+  ref_contextual_usage = 'excluded'
+)
+
+if (! dir.exists(params$output_path)) {
+  dir.create(params$output_path)
+}
+write_tsv(sample_metadata, file = file.path(params$output_path, "sample_metadata.tsv"))
+write_tsv(reference_metadata, file = file.path(params$output_path, "reference_metadata.tsv"))
+```
+
+
