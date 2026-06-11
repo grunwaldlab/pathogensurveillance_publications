@@ -84,7 +84,7 @@ if (file.exists(family_data_cache_path)) {
     }))
     
     tibble(
-      kingdom_name = names(kingdoms)[i],
+      kingdom = names(kingdoms)[i],
       kingdom_id = kingdoms[i],
       family_id = family_ids,
       family = family_name
@@ -202,7 +202,9 @@ all_assembly_data <- future_map_dfr(raw_assembly_data_paths, function(in_path) {
   if (! file.exists(out_path)) {
     parse_assembly_metadata(in_path, out_path)
   }
-  read_tsv(out_path, show_col_types = FALSE, col_types = 'ccccccccnnnnnnnclllnncccl')
+  out <- read_tsv(out_path, show_col_types = FALSE, col_types = 'ccccccccnnnnnnnclllnncccl')
+  out$family_id <- sub(pattern = '\\.json', replacement = '', basename(in_path))
+  return(out)
 })
 all_assembly_data
 ```
@@ -213,19 +215,15 @@ all_assembly_data
 For each family, identify species that have at least `r params$min_assemblies_per_species` assemblies, including one in RefSeq.
 
 ```{r identify_candidates}
-is_ambiguous_taxon_name <- function(taxon_names, unknown = TRUE, uncultured = TRUE,
-                         name_regex = ".", ignore_case = TRUE) {
-  # Get patterns to filter out 
-  patterns <- c(".*unknown.*", ".*unidentified.*", ".*incertae[_ -]+sedis.*", 
-                ".*ambiguous.*", ".*ambiguous[_ -]+taxa.*", ".*unassigned.*", 
-                ".*possible.*", ".*putative.*", ".*uncultured.*", ".*candidatus.*", 
-                ".*metagenome.*", ".*sp\\..*", ".*cf\\..*", ".*endosymbiont.*" ,
-                ".*symbiont.*", ".*bacterium.*")
-  
-  # Find which taxa to filter out 
-  Reduce(`|`, lapply(patterns, function(x) {
-    grepl(taxon_names, pattern = x, ignore.case = ignore_case)
-  }))
+is_ambiguous_taxon_name <- function(taxon_names) {
+    patterns <- c(".*\\bunknown.*", ".*\\bunidentified.*", ".*incertae[_ -]+sedis.*",
+                  ".*\\bambiguous\\b.*", ".*ambiguous[_ -]+taxa.*", ".*unassigned.*",
+                  ".*possible.*", ".*putative.*", ".*uncultured.*", ".*\\bcandidatus.*",
+                  ".*metagenome.*", ".*\\bsp\\..*", ".*\\bcf\\..*", ".*\\bendosymbiont.*" ,
+                  ".*\\bsymbiont.*", ".*\\bbacterium\\b.*", ".*\\bgenomosp\\..*")
+    Reduce(`|`, lapply(patterns, function(x) {
+        grepl(taxon_names, pattern = x, ignore.case = TRUE)
+    }))
 }
 
 all_assembly_data$is_latin_binomial <- grepl(all_assembly_data$organism_name, pattern = '^[a-zA-Z]+ [a-zA-Z]+( .*$|$)')
@@ -352,17 +350,18 @@ if (file.exists(biosample_data_cache_path)) {
 sample_metadata <- inner_join(genus_assembly_data, biosample_data, by = 'biosample_id')
 sample_metadata <- filter(sample_metadata, is_latin_binomial)
 
+# Add family data
+family_data$family_id <- as.character(family_data$family_id)
+sample_metadata <- left_join(sample_metadata, family_data, by = 'family_id')
+
+# Add columns for use with pathogensurveillance
 sample_metadata$name <- paste('Should be', sample_metadata$species)
 sample_metadata$description <- paste0('Should be ', sample_metadata$organism_name, ' (', sample_metadata$accession, ', ', sample_metadata$ncbi_accession, ')')
 sample_metadata$ref_group_ids <- gsub(sample_metadata$accession, pattern = '.', replacement = '_', fixed = TRUE)
 sample_metadata$ploidy <- ifelse(endsWith(sample_metadata$assembly_type, 'diploid'), 2, 1)
 sample_metadata$report_group_ids <- tolower(gsub(sample_metadata$species, pattern = ' ', replacement = '_'))
 
-
-set.seed(params$random_seed)
-sample_metadata <- sample_metadata[sample(1:nrow(sample_metadata)), , drop = FALSE]
-
-
+# Annotate problematic accessions
 sample_metadata$notes <- ''
 sample_metadata$enabled <- TRUE
 contaminated_reads <- c(
@@ -383,7 +382,11 @@ sample_metadata$notes[sample_metadata$ncbi_accession %in% no_quality_data] <- 'L
 sample_metadata$enabled[sample_metadata$ncbi_accession %in% too_big] <- FALSE
 sample_metadata$notes[sample_metadata$ncbi_accession %in% too_big] <- 'Requires more RAM than available on testing system.'
 
+# Randomize row order
+set.seed(params$random_seed)
+sample_metadata <- sample_metadata[sample(1:nrow(sample_metadata)), , drop = FALSE]
 
+# Create reference data to exclude reference genome associated with the reads
 reference_metadata <- tibble(
   ref_id = sample_metadata$ref_group_ids,
   ref_group_ids = 'disallowed_refs',
@@ -392,6 +395,7 @@ reference_metadata <- tibble(
   ref_contextual_usage = 'excluded'
 )
 
+# Write results to TSV files for use with pathogensurveillance
 if (! dir.exists(params$output_path)) {
   dir.create(params$output_path)
 }

@@ -14,21 +14,11 @@ library(PathoSurveilR)
 library(purrr)
 library(ape)
 library(tibble)
+library(ggsankey)
+library(dplyr)
+library(ggplot2)
 
 pathsuriveil_output_dir <- 'output/pathsurveil_output'
-
-known_ps_outputs(pathsuriveil_output_dir)
-PathoSurveilR::print_ps_outputs(pathsuriveil_output_dir)
-```
-
-
-```{r}
-top_hits <- sendsketch_parsed(pathsuriveil_output_dir, only_best = TRUE)
-```
-
-
-```{r}
-find_ps_paths(pathsuriveil_output_dir, target = 'multigene_tree')
 ```
 
 
@@ -119,33 +109,51 @@ results <- map_dfr(report_input_dirs, function(path) {
   
   # Format row for result table
   tibble(
-    expected = sample_metadata$species,
+    sample_id = sample_metadata$sample_id,
+    expected_species = sample_metadata$species,
+    expected_genus = strsplit(expected_species, split = ' +')[[1]][1],
+    expected_family = sample_metadata$family,
     multigene_id = multigene_tree_id,
     sourmash_id = sourmash_top_id,
-    sourmash_ani = sourmash_top_ani,
-    sourmash_correct_ref_ani = sourmash_top_correct_ref_ani,
+    sourmash_ani = sourmash_top_ani * 100,
+    sourmash_correct_ref_ani = sourmash_top_correct_ref_ani * 100,
     sendsketch_id = sendsketch_results$taxName[1],
-    sendsketch_top_ani = sendsketch_results$ANI[1],
+    sendsketch_ani = as.numeric(sub(pattern = '%', replacement = '', sendsketch_results$ANI[1])),
     sendsketch_has_correct_species = any(startsWith(sendsketch_taxa$name, expected_species)),
     sendsketch_has_correct_genus = any(startsWith(sendsketch_taxa$name, expected_genus)),
+    sendsketch_has_correct_family = any(startsWith(sendsketch_taxa$name, expected_family))
   )
 })
 ```
 
 
 ```{r}
-library(ggsankey)
-library(dplyr)
 
-# Function to classify identification result
-classify_id <- function(id, expected) {
+# Function to classify sendsketch results
+classify_sendsketch <- function(id, expected_species, expected_genus, has_correct_family) {
   if (is.na(id)) {
     return("Not run")
   }
-  if (startsWith(id, expected)) {
+  if (startsWith(id, expected_species)) {
     return("Species correct")
   }
-  expected_genus <- strsplit(expected, split = " +")[[1]][1]
+  if (startsWith(id, expected_genus)) {
+    return("Genus correct")
+  }
+  if (!is.na(has_correct_family) && has_correct_family) {
+    return("Family correct")
+  }
+  return("Incorrect")
+}
+
+# Function to classify sourmash and multigene results
+classify_other <- function(id, expected_species, expected_genus) {
+  if (is.na(id)) {
+    return("Not run")
+  }
+  if (startsWith(id, expected_species)) {
+    return("Species correct")
+  }
   if (startsWith(id, expected_genus)) {
     return("Genus correct")
   }
@@ -155,9 +163,14 @@ classify_id <- function(id, expected) {
 # Prepare data for Sankey plot
 sankey_data <- results %>%
   mutate(
-    sendsketch = map2_chr(sendsketch_id, expected, classify_id),
-    sourmash = map2_chr(sourmash_id, expected, classify_id),
-    multigene = map2_chr(multigene_id, expected, classify_id)
+    sendsketch = pmap_chr(list(sendsketch_id, expected_species, expected_genus, sendsketch_has_correct_family), classify_sendsketch),
+    sourmash = pmap_chr(list(sourmash_id, expected_species, expected_genus), classify_other),
+    multigene = pmap_chr(list(multigene_id, expected_species, expected_genus), classify_other)
+  ) %>%
+  mutate(
+    sendsketch = factor(sendsketch, levels = c("Not run", "Incorrect", "Family correct", "Genus correct", "Species correct")),
+    sourmash = factor(sourmash, levels = c("Not run", "Incorrect", "Family correct", "Genus correct", "Species correct")),
+    multigene = factor(multigene, levels = c("Not run", "Incorrect", "Family correct", "Genus correct", "Species correct"))
   ) %>%
   select(sendsketch, sourmash, multigene)
 
@@ -169,19 +182,22 @@ sankey_long <- sankey_data %>%
 node_counts <- sankey_long %>%
   group_by(x, node) %>%
   summarise(count = n(), .groups = "drop") %>%
-  mutate(label = paste0(node, "\n(n=", count, ")"))
+  group_by(x) %>%
+  mutate(percent = round(count / sum(count) * 100, 1)) %>%
+  ungroup() %>%
+  mutate(label = paste0(node, "\n", count, " (", percent, "%)"))
 
 # Merge counts back
 sankey_long <- sankey_long %>%
   left_join(node_counts, by = c("x", "node"))
 
-# Custom color mapping: Species correct = green, Genus correct = yellow, Incorrect/Not run = grey
-color_mapping <- c("Species correct" = "#2ca02c", "Genus correct" = "#FFD700", "Incorrect" = "#7f7f7f", "Not run" = "#7f7f7f")
+# Custom color mapping: Species correct = green, Genus correct = yellow, Family correct = amber, Incorrect/Not run = grey
+color_mapping <- c("Species correct" = "#2ca02c", "Genus correct" = "#FFD700", "Family correct" = "orange", "Incorrect" = "red", "Not run" = "#7f7f7f")
 
 # Plot the Sankey diagram
-sankey_long %>%
+sankey_plot <- sankey_long %>%
   mutate(
-    node = factor(node, levels = c("Not run", "Incorrect", "Genus correct", "Species correct"))
+    node = factor(node, levels = c("Not run", "Incorrect", "Family correct", "Genus correct", "Species correct"))
   ) %>%
   ggplot(aes(x = x, next_x = next_x, node = node, next_node = next_node, fill = node, label = label)) +
   geom_sankey(flow.alpha = 0.6, node.color = "black", show.legend = FALSE) +
@@ -195,6 +211,8 @@ sankey_long %>%
     axis.text.y = element_blank(),
     axis.text.x = element_text(size = 12)
   )
+ggsave(sankey_plot, filename = 'output/sankey_plot.svg', height = 7, width = 5)
+sankey_plot
 ```
 
 
