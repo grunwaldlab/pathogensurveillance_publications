@@ -113,6 +113,7 @@ results <- map_dfr(report_input_dirs, function(path) {
     expected_species = sample_metadata$species,
     expected_genus = strsplit(expected_species, split = ' +')[[1]][1],
     expected_family = sample_metadata$family,
+    expected_kingdom = sample_metadata$kingdom,
     multigene_id = multigene_tree_id,
     sourmash_id = sourmash_top_id,
     sourmash_ani = sourmash_top_ani * 100,
@@ -124,11 +125,17 @@ results <- map_dfr(report_input_dirs, function(path) {
     sendsketch_has_correct_family = any(startsWith(sendsketch_taxa$name, expected_family))
   )
 })
+
+# Add data from human valuation
+evaluation_data <- read_tsv('human_evaluation.tsv')
+results <- left_join(results, evaluation_data)
+results$appears_conclusive[is.na(results$appears_conclusive)] <- results$sourmash_ani[is.na(results$appears_conclusive)] >= 0.95
+results$refineable[is.na(results$refineable)] <- results$sourmash_ani[is.na(results$refineable)] >= 0.95
+results$correct_species[is.na(results$correct_species)] <- TRUE # Samples with the correct ID for all sendsketch, sourmash, and multigene tree were assumed correct and not manually evaluated
+results$correct_genus[is.na(results$correct_genus)] <- TRUE # Samples with the correct ID for all sendsketch, sourmash, and multigene tree were assumed correct and not manually evaluated
 ```
 
-
 ```{r}
-
 # Function to classify sendsketch results
 classify_sendsketch <- function(id, expected_species, expected_genus, has_correct_family) {
   if (is.na(id)) {
@@ -160,23 +167,45 @@ classify_other <- function(id, expected_species, expected_genus) {
   return("Incorrect")
 }
 
+# Function to classify human interpretation
+classify_interpretation <- function(appears_conclusive, correct_species) {
+  if (is.na(appears_conclusive) || is.na(correct_species)) {
+    return("NA")
+  }
+  if (!appears_conclusive) {
+    return("Inconclusive")
+  }
+  if (appears_conclusive && correct_species) {
+    return("Correctly identified")
+  }
+  return("Incorrectly identified")
+}
+
 # Prepare data for Sankey plot
-sankey_data <- results %>%
+results <- results %>%
   mutate(
     sendsketch = pmap_chr(list(sendsketch_id, expected_species, expected_genus, sendsketch_has_correct_family), classify_sendsketch),
     sourmash = pmap_chr(list(sourmash_id, expected_species, expected_genus), classify_other),
-    multigene = pmap_chr(list(multigene_id, expected_species, expected_genus), classify_other)
-  ) %>%
-  mutate(
-    sendsketch = factor(sendsketch, levels = c("Not run", "Incorrect", "Family correct", "Genus correct", "Species correct")),
-    sourmash = factor(sourmash, levels = c("Not run", "Incorrect", "Family correct", "Genus correct", "Species correct")),
-    multigene = factor(multigene, levels = c("Not run", "Incorrect", "Family correct", "Genus correct", "Species correct"))
-  ) %>%
-  select(sendsketch, sourmash, multigene)
+    multigene = pmap_chr(list(multigene_id, expected_species, expected_genus), classify_other),
+    interpretation = map2_chr(appears_conclusive, correct_species, classify_interpretation)
+  )
+```
 
+To manually inspect:
+
+```{r}
+results %>%
+  filter(interpretation == "Incorrectly identified") %>%
+  select(sample_id, expected_species, multigene_id, sendsketch_has_correct_genus, sendsketch_has_correct_family)
+```
+
+
+
+```{r}
 # Reshape to long format for ggsankey
-sankey_long <- sankey_data %>%
-  make_long(sendsketch, sourmash, multigene)
+sankey_long <- results %>%
+  select(sendsketch, sourmash, multigene, interpretation) %>%
+  make_long(sendsketch, sourmash, multigene, interpretation)
 
 # Count occurrences for labels
 node_counts <- sankey_long %>%
@@ -191,13 +220,17 @@ node_counts <- sankey_long %>%
 sankey_long <- sankey_long %>%
   left_join(node_counts, by = c("x", "node"))
 
-# Custom color mapping: Species correct = green, Genus correct = yellow, Family correct = amber, Incorrect/Not run = grey
-color_mapping <- c("Species correct" = "#2ca02c", "Genus correct" = "#FFD700", "Family correct" = "orange", "Incorrect" = "red", "Not run" = "#7f7f7f")
+# Custom color mapping: Species correct = green, Genus correct = yellow, Family correct = orange, Incorrect/Not run = grey, Interpretation categories = green/yellow/red
+color_mapping <- c(
+  "Species correct" = "#2ca02c", "Genus correct" = "#FFD700", "Family correct" = "orange",
+  "Incorrect" = "red", "Not run" = "#7f7f7f",
+  "Correctly identified" = "#2ca02c", "Inconclusive" = "#FFD700", "Incorrectly identified" = "red"
+)
 
 # Plot the Sankey diagram
 sankey_plot <- sankey_long %>%
   mutate(
-    node = factor(node, levels = c("Not run", "Incorrect", "Family correct", "Genus correct", "Species correct"))
+    node = factor(node, levels = c("Not run", "Incorrectly identified", "Inconclusive", "Incorrect", "Family correct", "Genus correct", "Species correct", "Correctly identified"))
   ) %>%
   ggplot(aes(x = x, next_x = next_x, node = node, next_node = next_node, fill = node, label = label)) +
   geom_sankey(flow.alpha = 0.6, node.color = "black", show.legend = FALSE) +

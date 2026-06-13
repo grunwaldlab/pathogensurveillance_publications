@@ -3,11 +3,13 @@
 - Sendsketch got the genus and species wrong and even the genus is not in any Sendsketch hits
 - A representative of the correct genus was not downloaded by chance
 - A user could only downloaded examples of every genus to refine the result
+- No reason to think there is anything wrong with the sequence. its assembly has high ANI to others of the same species
 
 ## Defluviitalea raffinosedens (GCF_009765695.1, SRR10673227)
 
 - Sendsketch did not even get the order right, no close matches
 - Its apparent from ANI (86%) and multigene phologeny that there is no close match, but no way for a user to know how to improve the reference
+- It is the reference genome for this species, so it should be reliable
 
 ## Desulfoscipio geothermicus DSM 3669 (GCF_900115975.1, SRR4136428)
 
@@ -24,6 +26,8 @@
 - Sendsketch got the family wrong, although Sendsketch and Sourmash best ANI is 94.6%
 - 89% ANI to closest named Pseudomonas putida. All the similar Pseudomonas sp. are unnamed.
 - This would be interpreted by a user as a resonably good classification
+- Shotgun metagenome of cultured Microcoleus anatoxicus strain PTRS-3 (non-axenic)
+- Removed from analysis since it was from a metagenome 
 
 ## Neofusicoccum parvum UCRNP2 (GCF_000385595.1, SRR654031)
 
@@ -31,6 +35,7 @@
 - By chance, a representative of the correct genus was downloaded (Neofusicoccum cordaticola)
 - A human user would natually return the pipeline with custom references from that genus
 - The ANI is 96%, so a human might rerun with better references or belive the incorrect classification
+- the corresponding assembly is suppressed on refseq, but no justification given
 
 ## Niveibacterium umoris (GCF_014197015.1, SRR10873147)
 
@@ -53,6 +58,19 @@
 ## Scheffersomyces spartinae (GCF_019049425.1, SRR14893465)
 
 - Is acutally correct; phylogenetic revision
+
+## Serratia bockelmannii (GCF_051803255.1, SRR33967303)
+
+- Clusters with Serratia marcescens and many unnamed species
+- The presence of many 99.2% ANI unknown species matches prevented the 98.9% Serratia bockelmannii representative from being included in the phylogeny
+
+
+## Stigmatella aurantiaca (GCF_900109545.1, SRR4236974)		
+
+- https://img.jgi.doe.gov/cgi-bin/m/main.cgi?section=TaxonDetail&page=taxonDetail&taxon_oid=2693429895
+- Is a high qaulity type strain
+- 2 Stigmatella aurantiaca referneces at 90% ANI. These are the only avialable references and have inconclusive taxonomy checks (https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000168055.1/)
+- The closest match Stigmatella hybrida is from type strain snf hsd 98% ANI
 
 ## Tatumella ptyseos (GCF_030552895.1, SRR24356799)
 

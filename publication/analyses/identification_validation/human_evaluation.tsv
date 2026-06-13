@@ -1,29 +1,30 @@
-sample_id	appears_conclusive	refineable	correct_species	correct_genus	notes
-SRR12082803	FALSE	FALSE	FALSE	FALSE	No close ANI matches
-ERR4056610	TRUE	TRUE	TRUE	TRUE	
-SRR8396970	TRUE	TRUE	TRUE	TRUE	
-ERR1562472	TRUE	TRUE	TRUE	TRUE	
-SRR33926287	TRUE	TRUE	TRUE	TRUE	
-SRR10673227	FALSE	FALSE	FALSE	FALSE	No close ANI matches
-SRR4136428	FALSE	TRUE	FALSE	TRUE	
-ERR1716476	TRUE	TRUE	TRUE	TRUE	
-SRR4136532	TRUE	TRUE	TRUE	TRUE	
-SRR8393199	TRUE	TRUE	TRUE	TRUE	
-SRR10997082	TRUE	TRUE	FALSE	FALSE	Query is likely a misidentification, but ANI not close enough for definitive ID
-SRR654031	TRUE	TRUE	FALSE	TRUE	Identified as a closely related cryptic species
-SRR10873147	FALSE	TRUE	FALSE	TRUE	No close ANI matches
-SRR11048612	FALSE	FALSE	FALSE	TRUE	Failed assembly
-SRR21023249	TRUE	TRUE	TRUE	TRUE	
-SRR4090974	FALSE	TRUE	FALSE	TRUE	No close ANI matches
-SRR22052062	FALSE	TRUE	TRUE	TRUE	
-ERR3402811	TRUE	TRUE	TRUE	TRUE	
-SRR12223103	FALSE	FALSE	FALSE	FALSE	No close ANI matches
-SRR22028840	TRUE	TRUE	TRUE	TRUE	
-SRR14893465	TRUE	TRUE	TRUE	TRUE	Matches the name of a synonym
-SRR11048424	TRUE	TRUE	TRUE	TRUE	
-SRR33967303	TRUE	TRUE	FALSE	TRUE	Query clusters with closely related and frequently misidentified Serratia marcescens
-SRR13696078	TRUE	TRUE	TRUE	TRUE	Sendsketch taxonomic summary and top hit disagree. Might be a bug
-SRR4236974	TRUE	TRUE	FALSE	TRUE	Identified as a closely related but distict species. Query could be misidentified.
-SRR24356799	FALSE	TRUE	FALSE	FALSE	Appears to be part of a clade that have disparate taxonomic classifications (different families) 
-SRR7810662	FALSE	FALSE	FALSE	FALSE	No close ANI matches
-SRR25916662	FALSE	TRUE	FALSE	TRUE	Appears in between two closely related sister species
+sample_id	appears_conclusive	refineable	correct_species	correct_genus	notes	action
+SRR12082803	FALSE	FALSE	FALSE	FALSE	No close ANI matches. 	Rerun with more genus representatives.
+ERR4056610	TRUE	TRUE	TRUE	TRUE		
+SRR8396970	TRUE	TRUE	TRUE	TRUE		
+ERR1562472	TRUE	TRUE	TRUE	TRUE		
+SRR33926287	TRUE	TRUE	TRUE	TRUE		
+SRR10673227	FALSE	FALSE	FALSE	FALSE	No close ANI matches. No hope to refine. 	
+SRR4136428	FALSE	TRUE	FALSE	TRUE		
+ERR1716476	TRUE	TRUE	TRUE	TRUE		
+SRR4136532	TRUE	TRUE	TRUE	TRUE		
+SRR8393199	TRUE	TRUE	TRUE	TRUE		
+SRR10997082	TRUE	TRUE	FALSE	FALSE	Query is likely a misidentification, but ANI not close enough for definitive ID	
+SRR654031	TRUE	TRUE	FALSE	TRUE	Identified as a closely related cryptic species at 96.3% ANI. 	Rerun with more neofusicoccum refs
+SRR10873147	FALSE	TRUE	FALSE	TRUE	No close ANI matches	
+SRR11048612	FALSE	FALSE	FALSE	TRUE	Failed assembly	
+SRR21023249	TRUE	TRUE	TRUE	TRUE		
+SRR4090974	FALSE	TRUE	FALSE	TRUE	No close ANI matches	
+SRR22052062	TRUE	TRUE	TRUE	TRUE		
+ERR3402811	TRUE	TRUE	TRUE	TRUE		
+SRR12223103	FALSE	FALSE	FALSE	FALSE	No close ANI matches	
+SRR22028840	TRUE	TRUE	TRUE	TRUE		
+SRR14893465	TRUE	TRUE	TRUE	TRUE	Matches the name of a synonym	
+SRR11048424	TRUE	TRUE	TRUE	TRUE		
+SRR33967303	TRUE	TRUE	FALSE	TRUE	Query clusters with closely related and frequently misidentified Serratia marcescens	Adjust defualt number of most similar named shown
+SRR13696078	TRUE	TRUE	TRUE	TRUE	Sendsketch taxonomic summary and top hit disagree. Might be a bug	
+SRR4236974	TRUE	TRUE	FALSE	TRUE	Identified as a closely related but distict species. Query could be misidentified.	
+SRR24356799	FALSE	TRUE	FALSE	FALSE	Appears to be part of a clade that have disparate taxonomic classifications (different families) 	
+SRR7810662	FALSE	FALSE	FALSE	FALSE	No close ANI matches	
+SRR25916662	FALSE	TRUE	FALSE	TRUE	Appears in between two closely related sister species	
+SRR23707005	TRUE	FALSE	TRUE	TRUE	Genome assembly failed	

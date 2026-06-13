@@ -367,13 +367,15 @@ sample_metadata$enabled <- TRUE
 contaminated_reads <- c(
   'SRR24012843',
   'SRR34542554',
-  'SRR24443145'
+  'SRR24443145',
+  'SRR10997082'
 )
 no_quality_data <- c(
   'SRR8436401'
 )
 too_big <- c(
-  'SRR16947702'
+  'SRR16947702',
+  'SRR13302776'
 )
 sample_metadata$enabled[sample_metadata$ncbi_accession %in% contaminated_reads] <- FALSE
 sample_metadata$notes[sample_metadata$ncbi_accession %in% contaminated_reads] <- 'Contaminated'
@@ -392,8 +394,17 @@ reference_metadata <- tibble(
   ref_group_ids = 'disallowed_refs',
   ref_ncbi_accession = sample_metadata$accession,
   ref_primary_usage = 'excluded',
-  ref_contextual_usage = 'excluded'
+  ref_contextual_usage = 'excluded',
+  ref_ncbi_query = '',
+  ref_ncbi_query_max = ''
 )
+
+# Add custom reference settings
+custom_references <- tribble(
+  ~ref_id, ~ref_group_ids, ~ref_ncbi_accession, ~ref_primary_usage, ~ref_contextual_usage, ~ref_ncbi_query, ~ref_ncbi_query_max,
+  'GCF_037911295_1', 'custom_refs', '', 'optional', 'optional', 'Neofusicoccum', '1000',
+)
+reference_metadata <- bind_rows(custom_references, reference_metadata)
 
 # Write results to TSV files for use with pathogensurveillance
 if (! dir.exists(params$output_path)) {
