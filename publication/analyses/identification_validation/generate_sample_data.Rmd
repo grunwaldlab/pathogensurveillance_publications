@@ -368,14 +368,21 @@ contaminated_reads <- c(
   'SRR24012843',
   'SRR34542554',
   'SRR24443145',
-  'SRR10997082'
+  'SRR10997082',
+  'SRR26567806',
+  'SRR18078973',
+  'ERR10499356'
 )
 no_quality_data <- c(
-  'SRR8436401'
+  'SRR8436401',
+  'SRR11293513'
 )
 too_big <- c(
   'SRR16947702',
   'SRR13302776'
+)
+not_genomic_data <- c(
+  'SRR7810662'
 )
 sample_metadata$enabled[sample_metadata$ncbi_accession %in% contaminated_reads] <- FALSE
 sample_metadata$notes[sample_metadata$ncbi_accession %in% contaminated_reads] <- 'Contaminated'
@@ -383,6 +390,8 @@ sample_metadata$enabled[sample_metadata$ncbi_accession %in% no_quality_data] <- 
 sample_metadata$notes[sample_metadata$ncbi_accession %in% no_quality_data] <- 'Lacks quality scorese in FASTQ'
 sample_metadata$enabled[sample_metadata$ncbi_accession %in% too_big] <- FALSE
 sample_metadata$notes[sample_metadata$ncbi_accession %in% too_big] <- 'Requires more RAM than available on testing system.'
+sample_metadata$enabled[sample_metadata$ncbi_accession %in% not_genomic_data] <- FALSE
+sample_metadata$notes[sample_metadata$ncbi_accession %in% not_genomic_data] <- 'Not genomic data'
 
 # Randomize row order
 set.seed(params$random_seed)

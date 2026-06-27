@@ -17,6 +17,7 @@ library(tibble)
 library(ggsankey)
 library(dplyr)
 library(ggplot2)
+library(readr)
 
 pathsuriveil_output_dir <- 'output/pathsurveil_output'
 ```
@@ -59,7 +60,13 @@ get_tips_by_distance <- function(tree, target_tip) {
   return(sorted_tips)
 }
 
+# Get report input dirs with main results
 report_input_dirs <- list.files(file.path(pathsuriveil_output_dir, 'report_group_data'), full.names = TRUE)
+
+# Replace old results for those that were manually rerun
+rerun_input_dirs <- list.files(file.path(list.files('output/manual_reruns', full.names = TRUE), 'report_group_data'), full.names = TRUE)
+report_input_dirs[basename(report_input_dirs) %in% basename(rerun_input_dirs)] <- rerun_input_dirs
+
 results <- map_dfr(report_input_dirs, function(path) {
   sample_metadata <- find_ps_data(path, target = 'sample_metadata')[[1]]
   reference_metadata <- find_ps_data(path, target = 'reference_metadata')[[1]]
@@ -125,14 +132,6 @@ results <- map_dfr(report_input_dirs, function(path) {
     sendsketch_has_correct_family = any(startsWith(sendsketch_taxa$name, expected_family))
   )
 })
-
-# Add data from human valuation
-evaluation_data <- read_tsv('human_evaluation.tsv')
-results <- left_join(results, evaluation_data)
-results$appears_conclusive[is.na(results$appears_conclusive)] <- results$sourmash_ani[is.na(results$appears_conclusive)] >= 0.95
-results$refineable[is.na(results$refineable)] <- results$sourmash_ani[is.na(results$refineable)] >= 0.95
-results$correct_species[is.na(results$correct_species)] <- TRUE # Samples with the correct ID for all sendsketch, sourmash, and multigene tree were assumed correct and not manually evaluated
-results$correct_genus[is.na(results$correct_genus)] <- TRUE # Samples with the correct ID for all sendsketch, sourmash, and multigene tree were assumed correct and not manually evaluated
 ```
 
 ```{r}
@@ -167,6 +166,24 @@ classify_other <- function(id, expected_species, expected_genus) {
   return("Incorrect")
 }
 
+# Prepare data for Sankey plot
+results <- results %>%
+  mutate(
+    sendsketch = pmap_chr(list(sendsketch_id, expected_species, expected_genus, sendsketch_has_correct_family), classify_sendsketch),
+    sourmash = pmap_chr(list(sourmash_id, expected_species, expected_genus), classify_other),
+    multigene = pmap_chr(list(multigene_id, expected_species, expected_genus), classify_other)
+  )
+```
+
+```{r}
+# Add data from human valuation
+evaluation_data <- read_tsv('human_evaluation.tsv')
+results <- left_join(results, evaluation_data)
+results$appears_conclusive[is.na(results$appears_conclusive)] <- results$sourmash_ani[is.na(results$appears_conclusive)] >= 0.95
+results$refineable[is.na(results$refineable)] <- results$sourmash_ani[is.na(results$refineable)] >= 0.95
+results$correct_species[is.na(results$correct_species)] <- results$multigene[is.na(results$correct_species)] == "Species correct" # Samples with the correct ID for all sendsketch, sourmash, and multigene tree were assumed correct and not manually evaluated
+results$correct_genus[is.na(results$correct_genus)] <- results$multigene[is.na(results$correct_genus)] %in% c("Species correct", "Genus correct") # Samples with the correct ID for all sendsketch, sourmash, and multigene tree were assumed correct and not manually evaluated
+
 # Function to classify human interpretation
 classify_interpretation <- function(appears_conclusive, correct_species) {
   if (is.na(appears_conclusive) || is.na(correct_species)) {
@@ -181,22 +198,17 @@ classify_interpretation <- function(appears_conclusive, correct_species) {
   return("Incorrectly identified")
 }
 
-# Prepare data for Sankey plot
-results <- results %>%
-  mutate(
-    sendsketch = pmap_chr(list(sendsketch_id, expected_species, expected_genus, sendsketch_has_correct_family), classify_sendsketch),
-    sourmash = pmap_chr(list(sourmash_id, expected_species, expected_genus), classify_other),
-    multigene = pmap_chr(list(multigene_id, expected_species, expected_genus), classify_other),
-    interpretation = map2_chr(appears_conclusive, correct_species, classify_interpretation)
-  )
+
+results$interpretation = map2_chr(results$appears_conclusive, results$correct_species, classify_interpretation)
 ```
+
 
 To manually inspect:
 
 ```{r}
 results %>%
-  filter(interpretation == "Incorrectly identified") %>%
-  select(sample_id, expected_species, multigene_id, sendsketch_has_correct_genus, sendsketch_has_correct_family)
+  filter(multigene != "Species correct") %>%
+  select(sample_id, expected_species, multigene_id, sendsketch_has_correct_genus, sendsketch_has_correct_family, interpretation)
 ```
 
 
@@ -248,4 +260,11 @@ ggsave(sankey_plot, filename = 'output/sankey_plot.svg', height = 7, width = 5)
 sankey_plot
 ```
 
+
+
+```{r}
+results %>%
+  ggplot() +
+  geom_point(aes(x = sourmash_ani, y = sendsketch_ani, color = interpretation))
+```
 

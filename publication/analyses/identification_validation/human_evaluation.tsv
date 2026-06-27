@@ -1,30 +1,35 @@
-sample_id	appears_conclusive	refineable	correct_species	correct_genus	notes	action
-SRR12082803	FALSE	FALSE	FALSE	FALSE	No close ANI matches. 	Rerun with more genus representatives.
-ERR4056610	TRUE	TRUE	TRUE	TRUE		
-SRR8396970	TRUE	TRUE	TRUE	TRUE		
-ERR1562472	TRUE	TRUE	TRUE	TRUE		
-SRR33926287	TRUE	TRUE	TRUE	TRUE		
-SRR10673227	FALSE	FALSE	FALSE	FALSE	No close ANI matches. No hope to refine. 	
-SRR4136428	FALSE	TRUE	FALSE	TRUE		
-ERR1716476	TRUE	TRUE	TRUE	TRUE		
-SRR4136532	TRUE	TRUE	TRUE	TRUE		
-SRR8393199	TRUE	TRUE	TRUE	TRUE		
-SRR10997082	TRUE	TRUE	FALSE	FALSE	Query is likely a misidentification, but ANI not close enough for definitive ID	
-SRR654031	TRUE	TRUE	FALSE	TRUE	Identified as a closely related cryptic species at 96.3% ANI. 	Rerun with more neofusicoccum refs
-SRR10873147	FALSE	TRUE	FALSE	TRUE	No close ANI matches	
-SRR11048612	FALSE	FALSE	FALSE	TRUE	Failed assembly	
-SRR21023249	TRUE	TRUE	TRUE	TRUE		
-SRR4090974	FALSE	TRUE	FALSE	TRUE	No close ANI matches	
-SRR22052062	TRUE	TRUE	TRUE	TRUE		
-ERR3402811	TRUE	TRUE	TRUE	TRUE		
-SRR12223103	FALSE	FALSE	FALSE	FALSE	No close ANI matches	
-SRR22028840	TRUE	TRUE	TRUE	TRUE		
-SRR14893465	TRUE	TRUE	TRUE	TRUE	Matches the name of a synonym	
-SRR11048424	TRUE	TRUE	TRUE	TRUE		
-SRR33967303	TRUE	TRUE	FALSE	TRUE	Query clusters with closely related and frequently misidentified Serratia marcescens	Adjust defualt number of most similar named shown
-SRR13696078	TRUE	TRUE	TRUE	TRUE	Sendsketch taxonomic summary and top hit disagree. Might be a bug	
-SRR4236974	TRUE	TRUE	FALSE	TRUE	Identified as a closely related but distict species. Query could be misidentified.	
-SRR24356799	FALSE	TRUE	FALSE	FALSE	Appears to be part of a clade that have disparate taxonomic classifications (different families) 	
-SRR7810662	FALSE	FALSE	FALSE	FALSE	No close ANI matches	
-SRR25916662	FALSE	TRUE	FALSE	TRUE	Appears in between two closely related sister species	
-SRR23707005	TRUE	FALSE	TRUE	TRUE	Genome assembly failed	
+sample_id	expected_species	appears_conclusive	refineable	correct_species	correct_genus	notes on first run	action	notes on second run
+SRR12082803		TRUE	TRUE	TRUE	TRUE	First run had no close ANI matches and incorrect genus. 	Rerun with more genus representatives.	Correct species on rerun
+ERR4056610		TRUE	TRUE	TRUE	TRUE			
+SRR8396970		TRUE	TRUE	TRUE	TRUE			
+ERR1562472		TRUE	TRUE	TRUE	TRUE			
+SRR33926287		TRUE	TRUE	TRUE	TRUE			
+SRR10673227		FALSE	FALSE	FALSE	FALSE	No close ANI matches. No hope to refine. 		
+SRR4136428	Desulfoscipio geothermicus	FALSE	TRUE	FALSE	TRUE	Poorly resolved clade of low quality genomes. 		
+ERR1716476		TRUE	TRUE	TRUE	TRUE			
+SRR4136532	Macellibacteroides fermentans	TRUE	TRUE	TRUE	TRUE	Sourmash and Sendsketch got it right, but multigene tree could not be made		
+SRR8393199		TRUE	TRUE	TRUE	TRUE			
+SRR10997082		TRUE	TRUE	FALSE	FALSE	Query is likely a misidentification, but ANI not close enough for definitive ID		
+SRR654031	Neofusicoccum parvum	TRUE	TRUE	TRUE	TRUE	Identified as a closely related cryptic species at 96.3% ANI. 	Rerun with Neofusicoccum refs as ncbi query	Correct species on rerun
+SRR10873147	Niveibacterium umoris	TRUE	TRUE	TRUE	TRUE	No close ANI matches, but sendsketch improved the ID.	Rerun with Niveibacterium refs as ncbi query	Correct species on rerun
+SRR11048612	Paractinoplanes abujensis	FALSE	FALSE	FALSE	TRUE	Genome assembly failed (No disjointigs were assembled)		
+SRR21023249		TRUE	TRUE	TRUE	TRUE			
+SRR4090974	Prosthecobacter debontii	FALSE	TRUE	FALSE	TRUE	No close ANI matches	Rerun with Prosthecobacter refs as ncbi query	
+SRR22052062		TRUE	TRUE	TRUE	TRUE			
+ERR3402811		TRUE	TRUE	TRUE	TRUE			
+SRR12223103	Rehaibacterium terrae	FALSE	FALSE	FALSE	FALSE	No close ANI matches. Sendsketch got family wrong. No hope to refine.		
+SRR22028840		TRUE	TRUE	TRUE	TRUE			
+SRR14893465	Scheffersomyces spartinae	TRUE	TRUE	TRUE	TRUE	Matches the name of a synonym		
+SRR11048424		TRUE	TRUE	TRUE	TRUE			
+SRR33967303	Serratia bockelmannii	TRUE	TRUE	FALSE	TRUE	Query clusters with closely related and frequently misidentified Serratia marcescens	Rerun with more strain and species representatives.	
+SRR13696078		TRUE	TRUE	TRUE	TRUE	Sendsketch taxonomic summary and top hit disagree. Might be a bug		
+SRR4236974	Stigmatella aurantiaca	TRUE	TRUE	FALSE	TRUE	Identified as a closely related but distict species. Query could be misidentified. No additonal refs to include, so refinement not possible.		
+SRR24356799	Tatumella ptyseos	FALSE	TRUE	FALSE	FALSE	Appears to be part of a clade that have disparate taxonomic classifications (different families) 	Rerun with more strain and species representatives.	
+SRR25916662	Winslowiella toletana	FALSE	TRUE	FALSE	TRUE	Appears in between two closely related sister species	Rerun with Winslowiella refs as ncbi query	
+SRR23707005	Lodderomyces elongisporus	TRUE	FALSE	TRUE	TRUE	Genome assembly failed (No disjointigs were assembled)		
+SRR29688558	Buchananella felis	FALSE	FALSE	FALSE	TRUE	Genome assembly failed (No disjointigs were assembled)	Rerun with more strain and species representatives.	
+SRR4063291	Alternaria alternata	TRUE	TRUE	TRUE	TRUE	All the species in Alternaria seem very closely related. Best match 99.1% and correct 98.8%	Rerun with more strain and species representatives.	Correct species on rerun
+SRR3927022	Hyphomicrobium denitrificans	TRUE	TRUE	FALSE	FALSE	Probably a misidentified sample. ~85% similar to many species In “correct” genus and 98.7% to many representatives of Rhodanobacter denitrificans		
+ERR1820608	Metamycoplasma alkalescens	TRUE	TRUE	TRUE	TRUE	Sourmash and Sendsketch got it right, but multigene tree could not be made		
+SRR4096818	Paracidovorax avenae	TRUE	TRUE	TRUE	TRUE	Sourmash and Sendsketch got it right, but multigene tree could not be made		
+SRR059300	Pyrenophora teres	FALSE	TRUE	FALSE	TRUE	Sendsketch got wrong, sourmash improved but still no close match. Best match is correct genus.	Rerun with Pyrenophora refs as ncbi query	

@@ -2,10 +2,6 @@
 cache/
 cache_*/
 
-# Output files - generated results
-*.tsv
-*.csv
-
 # RMarkdown outputs
 *.html
 *.pdf
@@ -31,3 +27,4 @@ path_surveil_data
 work
 intermediate
 output/pathsurveil_output
+output/manual_reruns
