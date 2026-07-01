@@ -1,0 +1,4 @@
+ref_id	ref_group_ids	ref_ncbi_accession	ref_primary_usage	ref_contextual_usage	ref_ncbi_query
+	tatumella_ptyseos_refs		optional	required	tatumella
+	tatumella_ptyseos_refs		optional	required	rosenbergiella
+GCF_000385595_1	tatumella_ptyseos_refs	GCF_030552895.1	excluded	excluded	

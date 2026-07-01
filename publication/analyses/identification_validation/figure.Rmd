@@ -19,7 +19,8 @@ library(dplyr)
 library(ggplot2)
 library(readr)
 
-pathsuriveil_output_dir <- 'output/pathsurveil_output'
+defualt_run_output_dir <- 'output/default_runs_output'
+manual_reruns_dir <- 'output/manual_runs_output'
 ```
 
 
@@ -61,10 +62,10 @@ get_tips_by_distance <- function(tree, target_tip) {
 }
 
 # Get report input dirs with main results
-report_input_dirs <- list.files(file.path(pathsuriveil_output_dir, 'report_group_data'), full.names = TRUE)
+report_input_dirs <- list.files(defualt_run_output_dir, full.names = TRUE)
 
 # Replace old results for those that were manually rerun
-rerun_input_dirs <- list.files(file.path(list.files('output/manual_reruns', full.names = TRUE), 'report_group_data'), full.names = TRUE)
+rerun_input_dirs <- list.files(manual_reruns_dir, full.names = TRUE)
 report_input_dirs[basename(report_input_dirs) %in% basename(rerun_input_dirs)] <- rerun_input_dirs
 
 results <- map_dfr(report_input_dirs, function(path) {
@@ -207,8 +208,10 @@ To manually inspect:
 
 ```{r}
 results %>%
-  filter(multigene != "Species correct") %>%
-  select(sample_id, expected_species, multigene_id, sendsketch_has_correct_genus, sendsketch_has_correct_family, interpretation)
+  # filter(multigene != "Species correct") %>%
+  filter(is.na(interpretation) | interpretation != "Correctly identified" | sourmash_ani < 95) %>%
+  select(sample_id, expected_species, multigene_id, sendsketch_has_correct_genus, sendsketch_has_correct_family, interpretation) %>%
+  arrange(desc(interpretation))
 ```
 
 

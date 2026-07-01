@@ -371,7 +371,8 @@ contaminated_reads <- c(
   'SRR10997082',
   'SRR26567806',
   'SRR18078973',
-  'ERR10499356'
+  'ERR10499356',
+  'SRR8846986'
 )
 no_quality_data <- c(
   'SRR8436401',
