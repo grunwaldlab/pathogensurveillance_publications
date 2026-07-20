@@ -4,6 +4,8 @@ output: html_document
 date: "2026-05-28"
 ---
 
+## Analysis dependencies
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -18,11 +20,44 @@ library(ggsankey)
 library(dplyr)
 library(ggplot2)
 library(readr)
-
-defualt_run_output_dir <- 'output/default_runs_output'
-manual_reruns_dir <- 'output/manual_runs_output'
 ```
 
+
+## Analysis arguments
+
+```{r}
+defualt_run_output_dir <- 'output/default_runs_output'
+manual_reruns_dir <- 'output/manual_runs_output'
+include_perfect_sendsketch_hits <- FALSE
+```
+
+
+## Get list of directories with run data
+
+These are copies of the data used as inputs for the main reports.
+They contain the most important results of the pipeline and PathoSurveilR knows where to find data in these directories.
+
+```{r}
+# Get report input dirs with main results
+report_input_dirs <- list.files(defualt_run_output_dir, full.names = TRUE)
+
+# Get report input dirs for those that were manually rerun
+rerun_input_dirs <- list.files(manual_reruns_dir, full.names = TRUE)
+
+# Combine into table
+input_dir_data <- tibble(
+  dir_path = c(report_input_dirs, rerun_input_dirs),
+  run_type = rep(c('defualt', 'custom'), c(length(report_input_dirs), length(rerun_input_dirs)))
+)
+```
+
+
+## Compile results relevant to identification
+
+This extracts statistics relevant to the interpretation of sendsketch, sourmash, and the core gene phylogeny results.
+First we can define some functions that will be used by this loop.
+
+A function to determine whether taxon names appear to be ambiguous (e.g. "unidentified bacterium"):
 
 ```{r}
 is_ambiguous_taxon_name <- function(taxon_names) {
@@ -38,7 +73,11 @@ is_ambiguous_taxon_name <- function(taxon_names) {
     grepl(taxon_names, pattern = x, ignore.case = TRUE)
   }))
 }
+```
 
+A function to return the tips in a phylogentic tree ordered by decreasing copehentic distance (how different they are based on branch length):
+
+```{r}
 get_tips_by_distance <- function(tree, target_tip) {
   # Check if target_tip exists in the tree
   if (!target_tip %in% tree$tip.label) {
@@ -60,25 +99,22 @@ get_tips_by_distance <- function(tree, target_tip) {
   # Return the sorted list
   return(sorted_tips)
 }
+```
 
-# Get report input dirs with main results
-report_input_dirs <- list.files(defualt_run_output_dir, full.names = TRUE)
+Now we can loop over the input directories and add more columns of identification-relevant statistics:
 
-# Replace old results for those that were manually rerun
-rerun_input_dirs <- list.files(manual_reruns_dir, full.names = TRUE)
-report_input_dirs[basename(report_input_dirs) %in% basename(rerun_input_dirs)] <- rerun_input_dirs
-
-results <- map_dfr(report_input_dirs, function(path) {
-  sample_metadata <- find_ps_data(path, target = 'sample_metadata')[[1]]
-  reference_metadata <- find_ps_data(path, target = 'reference_metadata')[[1]]
+```{r}
+results <- pmap_dfr(input_dir_data, function(dir_path, run_type) {
+  sample_metadata <- find_ps_data(dir_path, target = 'sample_metadata')[[1]]
+  reference_metadata <- find_ps_data(dir_path, target = 'reference_metadata')[[1]]
   expected_species <- sample_metadata$species
   expected_genus <- strsplit(sample_metadata$species, split = ' +')[[1]][1]
   
   # Get multigene tree closest species
-  if (is.null(find_ps_paths(path, target = 'multigene_tree', must_exist = FALSE))) {
+  if (is.null(find_ps_paths(dir_path, target = 'multigene_tree', must_exist = FALSE))) {
     multigene_tree_id <- NA_character_
   } else {
-    tree <- find_ps_data(path, target = 'multigene_tree')[[1]]
+    tree <- find_ps_data(dir_path, target = 'multigene_tree')[[1]]
     ordered_tip_ids <- get_tips_by_distance(tree, sample_metadata$sample_id)
     species_id_name_key <- c(sample_metadata$species, reference_metadata$ref_name)
     names(species_id_name_key) <- c(sample_metadata$sample_id, reference_metadata$ref_id)
@@ -88,16 +124,16 @@ results <- map_dfr(report_input_dirs, function(path) {
   }
   
   # Get sendsketch ids
-  sendsketch_results <- find_ps_data(path, target = 'sendsketch')[[1]]
-  sendsketch_taxa <- find_ps_data(path, target = 'sendsketch_taxa')[[1]]
+  sendsketch_results <- find_ps_data(dir_path, target = 'sendsketch')[[1]]
+  sendsketch_taxa <- find_ps_data(dir_path, target = 'sendsketch_taxa')[[1]]
   
   # Get sourmash ANI results
-  if (is.null(find_ps_paths(path, target = 'ani_matrix_csv', must_exist = FALSE))) {
+  if (is.null(find_ps_paths(dir_path, target = 'ani_matrix_csv', must_exist = FALSE))) {
     sourmash_top_id <- NA_character_
     sourmash_top_ani <- NA
     sourmash_top_correct_ref_ani <- NA
   } else {
-    ani_matrix <- find_ps_data(path, target = 'ani_matrix_csv')[[1]]
+    ani_matrix <- find_ps_data(dir_path, target = 'ani_matrix_csv')[[1]]
     sample_anis <- sort(ani_matrix[sample_metadata$sample_id, ], na.last = TRUE, decreasing = TRUE)
     sample_anis <- sample_anis[! names(sample_anis) %in% sample_metadata$sample_id]
     refs_that_match_query <- reference_metadata$ref_id[startsWith(reference_metadata$ref_name, expected_species)]
@@ -118,6 +154,7 @@ results <- map_dfr(report_input_dirs, function(path) {
   # Format row for result table
   tibble(
     sample_id = sample_metadata$sample_id,
+    run_type = run_type,
     expected_species = sample_metadata$species,
     expected_genus = strsplit(expected_species, split = ' +')[[1]][1],
     expected_family = sample_metadata$family,
@@ -135,24 +172,22 @@ results <- map_dfr(report_input_dirs, function(path) {
 })
 ```
 
-```{r}
-# Function to classify sendsketch results
-classify_sendsketch <- function(id, expected_species, expected_genus, has_correct_family) {
-  if (is.na(id)) {
-    return("Not run")
-  }
-  if (startsWith(id, expected_species)) {
-    return("Species correct")
-  }
-  if (startsWith(id, expected_genus)) {
-    return("Genus correct")
-  }
-  if (!is.na(has_correct_family) && has_correct_family) {
-    return("Family correct")
-  }
-  return("Incorrect")
-}
+We can now choose to filter out all analyses with perfect sendsketch hits, since these likely indicate that the assembly corresponding to the reads for the given sample is represented by its sketch in the sendsketch database.
+This would interfere with our goal of simulating a newly sequenced organism.
+Since sendsketch does not return the NCBI ID of the match, we can not filter for this explicitly, so this is the next best indicator.
 
+```{r}
+if (! include_perfect_sendsketch_hits)  {
+  results <- results[results$sendsketch_ani < 99.9, ]  
+}
+```
+
+
+## Interpret the identification statistics
+
+Compare the expected taxon to the one returned by sendsketch, sourmash, and the multigene phylogeny to determine the finest taxonomic rank that was accurately classified.
+
+```{r}
 # Function to classify sourmash and multigene results
 classify_other <- function(id, expected_species, expected_genus) {
   if (is.na(id)) {
@@ -167,6 +202,15 @@ classify_other <- function(id, expected_species, expected_genus) {
   return("Incorrect")
 }
 
+# Function to classify sendsketch results
+classify_sendsketch <- function(id, expected_species, expected_genus, has_correct_family) {
+  result <- classify_other(id, expected_species, expected_genus)
+  if (result == "Incorrect" && !is.na(has_correct_family) && has_correct_family) {
+    return("Family correct")
+  }
+  return(result)
+}
+
 # Prepare data for Sankey plot
 results <- results %>%
   mutate(
@@ -175,6 +219,9 @@ results <- results %>%
     multigene = pmap_chr(list(multigene_id, expected_species, expected_genus), classify_other)
   )
 ```
+
+
+# Add data from manual evaluation
 
 ```{r}
 # Add data from human valuation
@@ -199,10 +246,8 @@ classify_interpretation <- function(appears_conclusive, correct_species) {
   return("Incorrectly identified")
 }
 
-
 results$interpretation = map2_chr(results$appears_conclusive, results$correct_species, classify_interpretation)
 ```
-
 
 To manually inspect:
 
@@ -215,6 +260,7 @@ results %>%
 ```
 
 
+## Plot how ID accuracy relates to method used
 
 ```{r}
 # Reshape to long format for ggsankey
@@ -264,6 +310,7 @@ sankey_plot
 ```
 
 
+## Plot relationship between ANI and ID accuracy
 
 ```{r}
 results %>%

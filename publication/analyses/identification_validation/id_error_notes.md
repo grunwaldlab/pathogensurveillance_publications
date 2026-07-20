@@ -17,6 +17,18 @@
 - Is sister to all Desulfoscipio geothermicus references, but the clade also includes Desulfoscipio gibsoniae DSM 721
 - All of the Desulfoscipio geothermicus are lower quality
 
+
+## Hyphomicrobium denitrificans 1NES1 (GCF_000230975.2, SRR3927022)
+
+- Sendsketch got it right with a perfect 100% match, likely because it was in its database.
+- Sourmash found a 98.7% match to Rhodanobacter denitrificans, which is in a different class.
+- The multigene phylogeny shows confident clustering in the Rhodanobacter denitrificans clade, which clusters with other Rhodanobacter species.\
+- Part of the sequencing project "Hyphomicrobium denitrificans 1NES1". Described in a genome announcement: https://doi.org/10.1128/genomea.00449-13. The sequencing project also sequenced Rhodanobacter strains.
+- This looks like a mislabeled sample error because:
+  - Both sourmash and the multigene phylogeny confidently cluster it with 3 Rhodanobacter denitrificans isolates (~97.5% ANI)
+  - Both do not cluster it with any of the 5 Hyphomicrobium denitrificans isolates included in the analysis (~85.5% ANI)
+  - The lab that sequenced it was also sequencing Rhodanobacter strains at the time.
+
 ## Macellibacteroides fermentans (GCF_900168155.1, SRR4136532)
 
 - Sourmash and Sendsketch got it right, but multigene tree could not be made
@@ -61,16 +73,20 @@
 
 ## Serratia bockelmannii (GCF_051803255.1, SRR33967303)
 
-- Clusters with Serratia marcescens and many unnamed species
+- ANI and multigene phylogeny clusters it confindently with Serratia marcescens and many unnamed species
+- There was a Serratia bockelmannii representative with ~98.9% ANI, but this was pushed out of the analysis by many Serratia marcescens isolates with ~99.1% ANI
 - The presence of many 99.2% ANI unknown species matches prevented the 98.9% Serratia bockelmannii representative from being included in the phylogeny
-
+- Serratia bockelmannii is considered to be part of the Serratia marcescens species complex (10.1186/s13756-025-01632-4) so one could argue that this is a correct ID or that the closest Serratia marcescens are mislabeled.
 
 ## Stigmatella aurantiaca (GCF_900109545.1, SRR4236974)		
 
+- Is a high quality type strain, sequenced as part of the "Genomic Encyclopedia of Archaeal and Bacterial Type Strains, Phase II"
+- Sendsketch got it right with a perfect 100% match, likely because it was in its database.
+- 2 Stigmatella aurantiaca references at 90% ANI. These are the only available references and have inconclusive taxonomy checks (https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000168055.1/)
 - https://img.jgi.doe.gov/cgi-bin/m/main.cgi?section=TaxonDetail&page=taxonDetail&taxon_oid=2693429895
-- Is a high qaulity type strain
-- 2 Stigmatella aurantiaca referneces at 90% ANI. These are the only avialable references and have inconclusive taxonomy checks (https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000168055.1/)
-- The closest match Stigmatella hybrida is from type strain snf hsd 98% ANI
+- The closest match Stigmatella hybrida is from type strain had 98% ANI
+- Looks like the genus Stigmatella was renamed to Allostigmatella (10.1099/ijsem.0.007208)
+- Limited and dubious reference data prevents a confident ID, but the 98% match to Stigmatella hybrida could mislead a user.
 
 ## Tatumella ptyseos (GCF_030552895.1, SRR24356799)
 

@@ -29,7 +29,7 @@ SRR25916662	Winslowiella toletana	FALSE	TRUE	FALSE	TRUE	Appears in between two c
 SRR23707005	Lodderomyces elongisporus	TRUE	FALSE	TRUE	TRUE	Genome assembly failed (No disjointigs were assembled)		
 SRR29688558	Buchananella felis	FALSE	FALSE	FALSE	TRUE	Genome assembly failed (No disjointigs were assembled)		
 SRR4063291	Alternaria alternata	TRUE	TRUE	TRUE	TRUE	All the species in Alternaria seem very closely related. Best match 99.1% and correct 98.8%	Rerun with more strain and species representatives.	Correct species on rerun
-SRR3927022	Hyphomicrobium denitrificans	TRUE	TRUE	FALSE	FALSE	Probably a misidentified sample. ~85% similar to many species In “correct” genus and 98.7% to many representatives of Rhodanobacter denitrificans		
+SRR3927022	Hyphomicrobium denitrificans	TRUE	TRUE	FALSE	FALSE	Probably a misidentified sample. ~85% similar to many species In “correct” genus and 98.7% to many representatives of Rhodanobacter denitrificans	Rerun with all of Hyphomicrobium and Rhodanobacter	
 ERR1820608	Metamycoplasma alkalescens	TRUE	TRUE	TRUE	TRUE	Sourmash and Sendsketch got it right, but multigene tree could not be made		
 SRR4096818	Paracidovorax avenae	TRUE	TRUE	TRUE	TRUE	Sourmash and Sendsketch got it right, but multigene tree could not be made		
 SRR059300	Pyrenophora teres	TRUE	TRUE	TRUE	TRUE	Sendsketch got wrong, sourmash improved but still no close match. Best match is correct genus.	Rerun with Pyrenophora refs as ncbi query	Correct species on rerun

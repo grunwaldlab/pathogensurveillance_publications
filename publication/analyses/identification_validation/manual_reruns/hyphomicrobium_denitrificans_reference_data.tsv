@@ -1,0 +1,6 @@
+ref_id	ref_group_ids	ref_ncbi_accession	ref_primary_usage	ref_contextual_usage	ref_ncbi_query	ref_ncbi_query_max
+	hyphomicrobium_denitrificans_refs		optional	optional	hyphomicrobium	100%
+	hyphomicrobium_denitrificans_refs		optional	optional	rhodanobacter	100%
+	hyphomicrobium_denitrificans_refs		optional	required	Hyphomicrobium denitrificans	100%
+	hyphomicrobium_denitrificans_refs		optional	required	Rhodanobacter denitrificans	100%
+GCF_000230975_2	hyphomicrobium_denitrificans_refs	GCF_000230975.2	excluded	excluded
