@@ -20,6 +20,7 @@ library(ggsankey)
 library(dplyr)
 library(ggplot2)
 library(readr)
+library(taxize)
 ```
 
 
@@ -188,8 +189,8 @@ if (! include_perfect_sendsketch_hits)  {
 Compare the expected taxon to the one returned by sendsketch, sourmash, and the multigene phylogeny to determine the finest taxonomic rank that was accurately classified.
 
 ```{r}
-# Function to classify sourmash and multigene results
-classify_other <- function(id, expected_species, expected_genus) {
+# Function to classify identification results
+classify_id <- function(id, expected_species, expected_genus, expected_family, has_family_correct = FALSE) {
   if (is.na(id)) {
     return("Not run")
   }
@@ -199,24 +200,41 @@ classify_other <- function(id, expected_species, expected_genus) {
   if (startsWith(id, expected_genus)) {
     return("Genus correct")
   }
+  if (!is.na(has_family_correct) && has_family_correct) {
+    return("Family correct")
+  }
   return("Incorrect")
 }
 
-# Function to classify sendsketch results
-classify_sendsketch <- function(id, expected_species, expected_genus, has_correct_family) {
-  result <- classify_other(id, expected_species, expected_genus)
-  if (result == "Incorrect" && !is.na(has_correct_family) && has_correct_family) {
-    return("Family correct")
-  }
-  return(result)
+# Look up families for sourmash and multigene IDs using taxize
+get_genus <- function(species_name) {
+  if (is.na(species_name)) return(NA_character_)
+  strsplit(species_name, split = ' +')[[1]][1]
 }
+
+# Get unique genera from sourmash and multigene IDs
+unique_genera <- unique(na.omit(c(
+  map_chr(results$sourmash_id, get_genus),
+  map_chr(results$multigene_id, get_genus)
+)))
+
+# Query families using taxize
+genus_families <- tax_name(sci = unique_genera, get = "family", db = "ncbi")
+family_map <- setNames(genus_families$family, genus_families$query)
+
+# Add family columns to results
+results <- results %>%
+  mutate(
+    sourmash_family = family_map[map_chr(sourmash_id, get_genus)],
+    multigene_family = family_map[map_chr(multigene_id, get_genus)]
+  )
 
 # Prepare data for Sankey plot
 results <- results %>%
   mutate(
-    sendsketch = pmap_chr(list(sendsketch_id, expected_species, expected_genus, sendsketch_has_correct_family), classify_sendsketch),
-    sourmash = pmap_chr(list(sourmash_id, expected_species, expected_genus), classify_other),
-    multigene = pmap_chr(list(multigene_id, expected_species, expected_genus), classify_other)
+    sendsketch = pmap_chr(list(sendsketch_id, expected_species, expected_genus, expected_family, sendsketch_has_correct_family), classify_id),
+    sourmash = pmap_chr(list(sourmash_id, expected_species, expected_genus, expected_family, sourmash_family == expected_family), classify_id),
+    multigene = pmap_chr(list(multigene_id, expected_species, expected_genus, expected_family, multigene_family == expected_family), classify_id)
   )
 ```
 
