@@ -12,7 +12,7 @@ SRR8393199	default		TRUE	TRUE	TRUE	TRUE
 SRR10997082	default		TRUE	TRUE	FALSE	FALSE		Query is likely a misidentification, but ANI not close enough for definitive ID	
 SRR654031	default	Neofusicoccum parvum	FALSE	TRUE	FALSE	TRUE		Identified as a closely related cryptic species at 96.3% ANI. 	Rerun with Neofusicoccum refs as ncbi query
 SRR10873147	default	Niveibacterium umoris	FALSE	TRUE	FALSE	TRUE	No similar reference	No close ANI matches, but sendsketch improved the ID.	Rerun with Niveibacterium refs as ncbi query
-SRR11048612	default	Paractinoplanes abujensis	FALSE	FALSE	FALSE	TRUE	Failed  assembly	Genome assembly failed (No disjointigs were assembled)	
+SRR11048612	default	Paractinoplanes abujensis	FALSE	FALSE	FALSE	TRUE	Failed assembly	Genome assembly failed (No disjointigs were assembled)	
 SRR21023249	default		TRUE	TRUE	TRUE	TRUE			
 SRR4090974	default	Prosthecobacter debontii	FALSE	TRUE	FALSE	TRUE		No close ANI matches	Rerun with Prosthecobacter refs as ncbi query
 SRR22052062	default		TRUE	TRUE	TRUE	TRUE			
@@ -26,8 +26,8 @@ SRR13696078	default		TRUE	TRUE	TRUE	TRUE		Sendsketch taxonomic summary and top h
 SRR4236974	default	Stigmatella aurantiaca	FALSE	TRUE	FALSE	TRUE		Identified as a closely related but distict species. Query could be misidentified. No additonal refs to include, so refinement not possible.	
 SRR24356799	default	Tatumella ptyseos	FALSE	TRUE	FALSE	FALSE	No similar reference	Appears to be part of a clade that have disparate taxonomic classifications (different families) 	Rerun with more strain and species representatives and forced inclusion of all Tatumella and Rosenbergiella.
 SRR25916662	default	Winslowiella toletana	FALSE	TRUE	FALSE	TRUE		Appears in between two closely related sister species	Rerun with Winslowiella refs as ncbi query
-SRR23707005	default	Lodderomyces elongisporus	TRUE	FALSE	TRUE	TRUE	Failed  assembly	Genome assembly failed (No disjointigs were assembled)	
-SRR29688558	default	Buchananella felis	FALSE	FALSE	FALSE	TRUE	Failed  assembly	Genome assembly failed (No disjointigs were assembled)	
+SRR23707005	default	Lodderomyces elongisporus	TRUE	FALSE	TRUE	TRUE	Failed assembly	Genome assembly failed (No disjointigs were assembled)	
+SRR29688558	default	Buchananella felis	FALSE	FALSE	FALSE	TRUE	Failed assembly	Genome assembly failed (No disjointigs were assembled)	
 SRR4063291	default	Alternaria alternata	FALSE	TRUE	FALSE	TRUE		All the species in Alternaria seem very closely related. Best match 99.1% and correct 98.8%	Rerun with more strain and species representatives.
 SRR3927022	default	Hyphomicrobium denitrificans	TRUE	TRUE	FALSE	FALSE		Probably a mislabeled sample. ~85% similar to many species In “correct” genus and 98.7% to many representatives of Rhodanobacter denitrificans	Rerun with all of Hyphomicrobium and Rhodanobacter
 ERR1820608	default	Metamycoplasma alkalescens	TRUE	TRUE	TRUE	TRUE		Sourmash and Sendsketch got it right, but multigene tree could not be made	
@@ -40,7 +40,7 @@ SRR5922897	default	Flavipsychrobacter stenotrophus	TRUE	TRUE	TRUE	TRUE		From the
 SRR4234965	default	Pseudomonas abietaniphila 	TRUE	TRUE	TRUE	TRUE		Divergence typical of the clade	
 SRR18709552	default	Roseomonas gilardii	TRUE	TRUE	TRUE	TRUE		Divergence typical of the clade	
 SRR4233921	default	Terribacillus halophilus	FALSE	TRUE	TRUE	TRUE		Part of a paraphyletic clade. No additional assemblies to use as reference	
-SRR31980706	default	Bergeriella denitrificans	FALSE	TRUE	TRUE	TRUE	Failed  assembly	Genome assembly failed (No disjointigs were assembled)	
+SRR31980706	default	Bergeriella denitrificans	FALSE	TRUE	TRUE	TRUE	Failed assembly	Genome assembly failed (No disjointigs were assembled)	
 SRR12082803	custom	Ameyamaea chiangmaiensis	TRUE	TRUE	TRUE	TRUE		Correct species on rerun	
 SRR4063291	custom	Alternaria alternata	TRUE	TRUE	TRUE	TRUE		Correct species on rerun	
 SRR4136428	custom	Desulfoscipio geothermicus	FALSE	FALSE	FALSE	TRUE	No similar reference	Still poorly resolved	

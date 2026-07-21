@@ -17,6 +17,7 @@ library(purrr)
 library(ape)
 library(tibble)
 library(ggsankey)
+library(ggalluvial)
 library(dplyr)
 library(ggplot2)
 library(readr)
@@ -195,13 +196,13 @@ classify_id <- function(id, expected_species, expected_genus, expected_family, h
     return("Not run")
   }
   if (startsWith(id, expected_species)) {
-    return("Species correct")
+    return("Species")
   }
   if (startsWith(id, expected_genus)) {
-    return("Genus correct")
+    return("Genus")
   }
   if (!is.na(has_family_correct) && has_family_correct) {
-    return("Family correct")
+    return("Family")
   }
   return("Incorrect")
 }
@@ -252,8 +253,8 @@ evaluation_data <- evaluation_data[evaluation_data$sample_id %in% results$sample
 # Add data from human evaluation onto the results table
 results <- left_join(results, evaluation_data, join_by(sample_id, run_type))
 results$appears_conclusive[is.na(results$appears_conclusive)] <- results$sourmash_ani[is.na(results$appears_conclusive)] >= 0.95
-results$correct_species[is.na(results$correct_species)] <- results$multigene[is.na(results$correct_species)] == "Species correct" # Samples with the correct ID for all sendsketch, sourmash, and multigene tree were assumed correct and not manually evaluated
-results$correct_genus[is.na(results$correct_genus)] <- results$multigene[is.na(results$correct_genus)] %in% c("Species correct", "Genus correct") # Samples with the correct ID for all sendsketch, sourmash, and multigene tree were assumed correct and not manually evaluated
+results$correct_species[is.na(results$correct_species)] <- results$multigene[is.na(results$correct_species)] == "Species" # Samples with the correct ID for all sendsketch, sourmash, and multigene tree were assumed correct and not manually evaluated
+results$correct_genus[is.na(results$correct_genus)] <- results$multigene[is.na(results$correct_genus)] %in% c("Species", "Genus") # Samples with the correct ID for all sendsketch, sourmash, and multigene tree were assumed correct and not manually evaluated
 
 # Function to classify human interpretation
 classify_interpretation <- function(appears_conclusive, correct_species) {
@@ -261,7 +262,7 @@ classify_interpretation <- function(appears_conclusive, correct_species) {
     return("NA")
   }
   if (correct_species) {
-    return("Correctly identified")
+    return("Correct")
   }
   if (!appears_conclusive) {
     return("Inconclusive")
@@ -276,9 +277,9 @@ To manually inspect:
 
 ```{r}
 results %>%
-  # filter(multigene != "Species correct") %>%
+  # filter(multigene != "Species") %>%
   filter(run_type == "default") %>%
-  filter(is.na(interpretation) | interpretation != "Correctly identified" | sourmash_ani < 95) %>%
+  filter(is.na(interpretation) | interpretation != "Correct" | sourmash_ani < 95) %>%
   select(sample_id, expected_species, multigene_id, sendsketch_has_correct_genus, sendsketch_has_correct_family, interpretation) %>%
   arrange(desc(interpretation))
 ```
@@ -305,62 +306,58 @@ sankey_data$interpretation_adjusted[is.na(sankey_data$interpretation_adjusted)] 
 
 sankey_data$explanation <- ifelse(is.na(sankey_data$explanation_adjusted), sankey_data$explanation_default, sankey_data$explanation_adjusted)
 sankey_data$explanation[is.na(sankey_data$explanation)] <- sankey_data$interpretation_adjusted[is.na(sankey_data$explanation)]
+sankey_data$explanation[sankey_data$interpretation_adjusted == "Correct"] <- "Correct"
 
-# Reshape to long format for ggsankey
-sankey_long <- sankey_data %>%
-  make_long(sendsketch, sourmash, multigene, interpretation_default, interpretation_adjusted, explanation)
+# Prepare wide-format data for ggalluvial (one row per sample)
+sankey_plot_data <- sankey_data %>%
+  select(sample_id, sendsketch, sourmash, multigene, interpretation_default, interpretation_adjusted, explanation)
 
-# Remove flows for samples without explanation at the explanation stage
-# sankey_long <- sankey_long %>%
-#   filter(!is.na(node), !is.na(next_node))
-
-# Count occurrences for labels - percentages out of total unique samples
-node_counts <- sankey_long %>%
-  group_by(x, node) %>%
-  summarise(count = n(), .groups = "drop") %>%
-  mutate(percent = round(count /  n_distinct(results$sample_id) * 100, 1)) %>%
-  mutate(label = paste0(node, "\n", count, " (", percent, "%)"))
-
-# Merge counts back
-sankey_long <- sankey_long %>%
-  left_join(node_counts, by = c("x", "node"))
-
-# Rename x positions for display
-level_names <- c("sendsketch", "sourmash", "multigene", "interpretation_default", 
-                 "interpretation_adjusted", "explanation")
-display_labels <- c("sendsketch", "sourmash", "multigene", "interpretation\n(default)", 
-                    "interpretation\n(adjusted)", "explanation")
-
-sankey_long <- sankey_long %>%
-  mutate(
-    x = factor(x, levels = level_names, labels = display_labels),
-    next_x = factor(next_x, levels = level_names, labels = display_labels)
-  )
-
-# Custom color mapping
-color_mapping <- c(
-  "Not run" = "#7f7f7f",
+# Color mapping
+node_colors <- c(
   "Species complex" = "#7f7f7f",
+  "Failed assembly" = "#7f7f7f",
+  "No similar reference" = "#7f7f7f",
+  "Not run" = "#7f7f7f",
   "Misleading" = "red",
   "Incorrect" = "red",
-  "Family correct" = "orange",
-  "Genus correct" = "#FFD700",
+  "Family" = "orange",
+  "Genus" = "#FFD700",
   "Inconclusive" = "#FFD700",
-  "Species correct" = "#2ca02c",
-  "Correctly identified" = "#2ca02c"
+  "Species" = "#2ca02c",
+  "Correct" = "#2ca02c"
 )
-explanations <- unique(sankey_data$explanation[! is.na(sankey_data$explanation) & ! sankey_data$explanation %in% names(color_mapping)])
-color_mapping <- c(setNames(rep("#7f7f7f", length(explanations)), explanations), color_mapping)
 
-# Plot the Sankey diagram
-sankey_plot <- sankey_long %>%
-  mutate(
-    node = factor(node, levels = names(color_mapping))
-  ) %>%
-  ggplot(aes(x = x, next_x = next_x, node = node, next_node = next_node, fill = node, label = label)) +
-  geom_sankey(flow.alpha = 0.6, node.color = "black", show.legend = FALSE) +
-  geom_sankey_label(size = 3, color = "black", fill = "white") +
-  scale_fill_manual(values = color_mapping) +
+# Convert to lodes form so each row is a stage for a sample
+# to_lodes_form renumbers IDs as integers, so use an integer key for joining
+sankey_plot_data$alluvium_id <- seq_len(nrow(sankey_plot_data))
+lodes <- to_lodes_form(sankey_plot_data, axes = 2:7, id = "alluvium_id")
+lodes$freq <- 1  # each sample contributes 1 unit
+
+# Join interpretation_adjusted back for alluvium coloring
+alluvium_colors <- sankey_plot_data %>% select(alluvium_id, interpretation_adjusted)
+lodes <- lodes %>%
+  left_join(alluvium_colors, by = "alluvium_id")
+
+# Rename x positions
+level_names <- c("sendsketch", "sourmash", "multigene", "interpretation_default",
+                 "interpretation_adjusted", "explanation")
+display_labels <- c("Sendsketch ID\nAccuracy", "Sourmash ID\nAccuracy", "Phylogeny ID\nAccuracy", "Interpretation\n(default)",
+                    "Interpretation\n(adjusted)", "Explanation")
+lodes$x <- factor(lodes$x, levels = level_names, labels = display_labels)
+lodes$stratum <- factor(lodes$stratum, levels = rev(names(node_colors)))
+
+# Plot with ggalluvial - each alluvium traces an individual sample
+sankey_plot <- ggplot(lodes,
+                       aes(x = x, y = freq, stratum = stratum, alluvium = alluvium_id)) +
+  geom_alluvium(aes(fill = interpretation_adjusted), width = 1/12, alpha = 0.6, color = NA) +
+  geom_stratum(aes(fill = stratum), width = 1/12, color = "black") +
+  geom_text(
+    stat = "stratum",
+    aes(label = paste0(after_stat(stratum), " (", round(after_stat(count) / n_distinct(sankey_plot_data$sample_id) * 100, 1), "%)")),
+    size = 3, color = "black", hjust = 0,
+    position = position_nudge(x = 0.1)
+  ) +
+  scale_fill_manual(values = node_colors) +
   theme_minimal() +
   labs(title = NULL, x = NULL, y = NULL) +
   theme(
