@@ -16,7 +16,7 @@ library(PathoSurveilR)
 library(purrr)
 library(ape)
 library(tibble)
-library(ggsankey)
+library(ggalluvial)
 library(ggalluvial)
 library(dplyr)
 library(ggplot2)
@@ -220,7 +220,7 @@ unique_genera <- unique(na.omit(c(
 )))
 
 # Query families using taxize
-genus_families <- tax_name(sci = unique_genera, get = "family", db = "ncbi")
+genus_families <- tax_name(sci = unique_genera, get = "family", db = "ncbi", rows = 2)
 family_map <- setNames(genus_families$family, genus_families$query)
 
 # Add family columns to results
@@ -230,7 +230,7 @@ results <- results %>%
     multigene_family = family_map[map_chr(multigene_id, get_genus)]
   )
 
-# Prepare data for Sankey plot
+# Prepare data for alluvial plot
 results <- results %>%
   mutate(
     sendsketch = pmap_chr(list(sendsketch_id, expected_species, expected_genus, expected_family, sendsketch_has_correct_family), classify_id),
@@ -291,7 +291,7 @@ results %>%
 # Get default run data
 default_results <- results %>%
   filter(run_type == "default") %>%
-  select(sample_id, sendsketch, sourmash, multigene, interpretation_default = interpretation, explanation_default = explanation)
+  select(sample_id, expected_species, sendsketch, sourmash, multigene, interpretation_default = interpretation, explanation_default = explanation)
 
 # Get custom run data  
 custom_results <- results %>%
@@ -299,21 +299,23 @@ custom_results <- results %>%
   select(sample_id, interpretation_adjusted = interpretation, explanation_adjusted = explanation)
 
 # Combine into one row per sample
-sankey_data <- default_results %>%
+alluvial_data <- default_results %>%
   left_join(custom_results, by = "sample_id")
 
-sankey_data$interpretation_adjusted[is.na(sankey_data$interpretation_adjusted)] <- sankey_data$interpretation_default[is.na(sankey_data$interpretation_adjusted)]
+alluvial_data$interpretation_adjusted[is.na(alluvial_data$interpretation_adjusted)] <- alluvial_data$interpretation_default[is.na(alluvial_data$interpretation_adjusted)]
 
-sankey_data$explanation <- ifelse(is.na(sankey_data$explanation_adjusted), sankey_data$explanation_default, sankey_data$explanation_adjusted)
-sankey_data$explanation[is.na(sankey_data$explanation)] <- sankey_data$interpretation_adjusted[is.na(sankey_data$explanation)]
-sankey_data$explanation[sankey_data$interpretation_adjusted == "Correct"] <- "Correct"
+alluvial_data$explanation <- ifelse(is.na(alluvial_data$explanation_adjusted), alluvial_data$explanation_default, alluvial_data$explanation_adjusted)
+alluvial_data$explanation[is.na(alluvial_data$explanation)] <- alluvial_data$interpretation_adjusted[is.na(alluvial_data$explanation)]
+alluvial_data$explanation[alluvial_data$interpretation_adjusted == "Correct"] <- "Correct"
 
 # Prepare wide-format data for ggalluvial (one row per sample)
-sankey_plot_data <- sankey_data %>%
-  select(sample_id, sendsketch, sourmash, multigene, interpretation_default, interpretation_adjusted, explanation)
+alluvial_plot_data <- alluvial_data %>%
+  transmute(sample_id, expected_species, interpretation = interpretation_adjusted, sendsketch, sourmash, multigene, interpretation_default, interpretation_adjusted, explanation)
+alluvial_plot_data$alluvium_id <- seq_len(nrow(alluvial_plot_data))
 
 # Color mapping
 node_colors <- c(
+  "Mislabeled sample" = "#7f7f7f",
   "Species complex" = "#7f7f7f",
   "Failed assembly" = "#7f7f7f",
   "No similar reference" = "#7f7f7f",
@@ -329,45 +331,77 @@ node_colors <- c(
 
 # Convert to lodes form so each row is a stage for a sample
 # to_lodes_form renumbers IDs as integers, so use an integer key for joining
-sankey_plot_data$alluvium_id <- seq_len(nrow(sankey_plot_data))
-lodes <- to_lodes_form(sankey_plot_data, axes = 2:7, id = "alluvium_id")
+lodes <- to_lodes_form(alluvial_plot_data, axes = 4:9, id = "alluvium_id")
 lodes$freq <- 1  # each sample contributes 1 unit
-
-# Join interpretation_adjusted back for alluvium coloring
-alluvium_colors <- sankey_plot_data %>% select(alluvium_id, interpretation_adjusted)
-lodes <- lodes %>%
-  left_join(alluvium_colors, by = "alluvium_id")
 
 # Rename x positions
 level_names <- c("sendsketch", "sourmash", "multigene", "interpretation_default",
                  "interpretation_adjusted", "explanation")
-display_labels <- c("Sendsketch ID\nAccuracy", "Sourmash ID\nAccuracy", "Phylogeny ID\nAccuracy", "Interpretation\n(default)",
-                    "Interpretation\n(adjusted)", "Explanation")
+display_labels <- c("Sendsketch ID\nAccuracy", "Sourmash ID\nAccuracy", "Phylogeny ID\nAccuracy", "Interpretation\n(Default parameters)",
+                    "Interpretation\n(Custom parameters)", "Explanation")
 lodes$x <- factor(lodes$x, levels = level_names, labels = display_labels)
 lodes$stratum <- factor(lodes$stratum, levels = rev(names(node_colors)))
 
+
+
 # Plot with ggalluvial - each alluvium traces an individual sample
-sankey_plot <- ggplot(lodes,
+alluvial_plot <- ggplot(lodes,
                        aes(x = x, y = freq, stratum = stratum, alluvium = alluvium_id)) +
-  geom_alluvium(aes(fill = interpretation_adjusted), width = 1/12, alpha = 0.6, color = NA) +
-  geom_stratum(aes(fill = stratum), width = 1/12, color = "black") +
+  geom_alluvium(aes(fill = interpretation), width = 1/12, alpha = 0.6, color = "#FFFFFF88", linewidth = 0.2) +
+  geom_stratum(aes(fill = stratum), width = 1/12, color = "black", show.legend = FALSE) +
+  # Extract exact y-positions of alluvia at first axis for sample labels
+  geom_text(
+    data = {
+      temp_plot <- ggplot(lodes, aes(x = x, y = freq, stratum = stratum, alluvium = alluvium_id)) +
+        geom_alluvium(width = 1/12)
+      built_data <- ggplot_build(temp_plot)$data[[1]]
+      built_data %>%
+        filter(x == 1) %>%
+        select(alluvium, y) %>%
+        left_join(alluvial_plot_data %>% select(alluvium_id, expected_species), by = c("alluvium" = "alluvium_id"))
+    },
+    aes(x = 1, y = y, label = expected_species),
+    hjust = 1,
+    position = position_nudge(x = -0.05),
+    size = 2,
+    stat = "identity",
+    inherit.aes = FALSE,
+    na.rm = TRUE
+  ) +
   geom_text(
     stat = "stratum",
-    aes(label = paste0(after_stat(stratum), " (", round(after_stat(count) / n_distinct(sankey_plot_data$sample_id) * 100, 1), "%)")),
-    size = 3, color = "black", hjust = 0,
-    position = position_nudge(x = 0.1)
+    aes(label = paste0(after_stat(stratum), " (", round(after_stat(count) / n_distinct(alluvial_plot_data$sample_id) * 100, 1), "%)")),
+    size = 3.5, color = "black", hjust = 0, fontface = "bold",
+    position = position_nudge(x = 0.07)
   ) +
-  scale_fill_manual(values = node_colors) +
+  scale_fill_manual(values = node_colors, breaks = unique(alluvial_plot_data$interpretation)) +
   theme_minimal() +
-  labs(title = NULL, x = NULL, y = NULL) +
+  labs(title = NULL, x = NULL, y = NULL, fill = "Interpretation") +
+  coord_cartesian(clip = "off") +
   theme(
-    legend.position = "none",
+    legend.position = c(.91, .96),
+    legend.justification = c(0, 1),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 14),
     panel.grid = element_blank(),
     axis.text.y = element_blank(),
-    axis.text.x = element_text(size = 12)
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    plot.margin = margin(t = 5, r = 100, b = 5, l = 60)
+  ) +
+  annotate("text",
+    x = display_labels,
+    y = -1.5,
+    label = display_labels,
+    size = 4, vjust = 1
   )
-ggsave(sankey_plot, filename = 'output/sankey_plot.svg', height = 7, width = 7)
-sankey_plot
+if (include_perfect_sendsketch_hits) {
+  alluvial_out_path = 'output/alluvial_plot.svg'
+} else {
+  alluvial_out_path = 'output/alluvial_plot_no_perfect_sendsketch_hits.svg'
+}
+ggsave(alluvial_plot, filename = alluvial_out_path, height = nrow(alluvial_plot_data) / 10 + 1, width = 12)
+alluvial_plot
 ```
 
 

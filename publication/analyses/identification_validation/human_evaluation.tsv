@@ -50,6 +50,6 @@ SRR10873147	custom	Niveibacterium umoris	TRUE	FALSE	TRUE	TRUE		Correct species o
 SRR4090974	custom	Prosthecobacter debontii	FALSE	FALSE	FALSE	TRUE	No similar reference	Still not well resolved. It seems the Prosthecobacter clade is very diversed in general (> 90% ANI mostly)	
 SRR059300	custom	Pyrenophora teres	TRUE	FALSE	TRUE	TRUE		Correct species on rerun	
 SRR33967303	custom	Serratia bockelmannii	TRUE	FALSE	FALSE	TRUE	Species complex	Serratia bockelmannii is considered to be part of the Serratia marcescens species complex (10.1186/s13756-025-01632-4) so one could argue that this is a correct ID or that the closest Serratia marcescens are mislabeled.	
-SRR4236974	custom	Stigmatella aurantiaca	TRUE	FALSE	FALSE	TRUE	Misleading	Limited and dubious reference data prevents a confident ID, but the 98% match to Stigmatella hybrida could mislead a user	
+SRR4236974	custom	Stigmatella aurantiaca	TRUE	FALSE	FALSE	TRUE	Species complex	Limited and dubious reference data prevents a confident ID, but the 98% match to Stigmatella hybrida could mislead a user	
 SRR24356799	custom	Tatumella ptyseos	FALSE	FALSE	FALSE	FALSE	No similar reference	Inside Rosenbergiella clade with no close mathces, not clustering with other Tatumell ptyseos. Perhaps misidentiied.	
 SRR25916662	custom	Winslowiella toletana	FALSE	FALSE	FALSE	TRUE	No similar reference	No close ANI matches, includign to Winslowiella toletana smaples  except to an unnamed Winslowiella species	

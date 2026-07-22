@@ -87,6 +87,8 @@
 - The closest match Stigmatella hybrida is from type strain had 98% ANI
 - Looks like the genus Stigmatella was renamed to Allostigmatella (10.1099/ijsem.0.007208)
 - Limited and dubious reference data prevents a confident ID, but the 98% match to Stigmatella hybrida could mislead a user.
+- "We demonstrate that established comparative genome analysis thresholds for the designation of novel species indicate that M. xanthus DSM 16526T and M. virescens DSM 2260T, St. aurantiaca DSM 17044T, Stigmatella erecta DSM 16858T, and Stigmatella hybrida DSM 14722T are not different species."(https://www.frontiersin.org/journals/microbiology/articles/10.3389/fmicb.2023.1227206/full)
+
 
 ## Tatumella ptyseos (GCF_030552895.1, SRR24356799)
 
