@@ -30,7 +30,7 @@ library(taxize)
 ```{r}
 defualt_run_output_dir <- 'output/default_runs_output'
 manual_reruns_dir <- 'output/manual_runs_output'
-include_perfect_sendsketch_hits <- FALSE
+include_perfect_sendsketch_hits <- TRUE
 ```
 
 
@@ -188,25 +188,9 @@ if (! include_perfect_sendsketch_hits)  {
 ## Interpret the identification statistics
 
 Compare the expected taxon to the one returned by sendsketch, sourmash, and the multigene phylogeny to determine the finest taxonomic rank that was accurately classified.
+First lets look up the family of genera identified by the multigene phylogeny:
 
-```{r}
-# Function to classify identification results
-classify_id <- function(id, expected_species, expected_genus, expected_family, has_family_correct = FALSE) {
-  if (is.na(id)) {
-    return("Not run")
-  }
-  if (startsWith(id, expected_species)) {
-    return("Species")
-  }
-  if (startsWith(id, expected_genus)) {
-    return("Genus")
-  }
-  if (!is.na(has_family_correct) && has_family_correct) {
-    return("Family")
-  }
-  return("Incorrect")
-}
-
+```{r cache=TRUE}
 # Look up families for sourmash and multigene IDs using taxize
 get_genus <- function(species_name) {
   if (is.na(species_name)) return(NA_character_)
@@ -229,6 +213,27 @@ results <- results %>%
     sourmash_family = family_map[map_chr(sourmash_id, get_genus)],
     multigene_family = family_map[map_chr(multigene_id, get_genus)]
   )
+```
+
+Now we can classify the accuracy of each identificaiton method.
+
+```{r results=FALSE}
+# Function to classify identification results
+classify_id <- function(id, expected_species, expected_genus, expected_family, has_family_correct = FALSE) {
+  if (is.na(id)) {
+    return("Not run")
+  }
+  if (startsWith(id, expected_species)) {
+    return("Species")
+  }
+  if (startsWith(id, expected_genus)) {
+    return("Genus")
+  }
+  if (!is.na(has_family_correct) && has_family_correct) {
+    return("Family")
+  }
+  return("Incorrect")
+}
 
 # Prepare data for alluvial plot
 results <- results %>%
@@ -267,7 +272,7 @@ classify_interpretation <- function(appears_conclusive, correct_species) {
   if (!appears_conclusive) {
     return("Inconclusive")
   }
-  return("Misleading")
+  return("Anomalous")
 }
 
 results$interpretation = map2_chr(results$appears_conclusive, results$correct_species, classify_interpretation)
@@ -277,7 +282,6 @@ To manually inspect:
 
 ```{r}
 results %>%
-  # filter(multigene != "Species") %>%
   filter(run_type == "default") %>%
   filter(is.na(interpretation) | interpretation != "Correct" | sourmash_ani < 95) %>%
   select(sample_id, expected_species, multigene_id, sendsketch_has_correct_genus, sendsketch_has_correct_family, interpretation) %>%
@@ -287,7 +291,7 @@ results %>%
 
 ## Plot how ID accuracy relates to method used
 
-```{r}
+```{r fig.height = n_distinct(results$sample_id) / 10 + 1, fig.width = 12}
 # Get default run data
 default_results <- results %>%
   filter(run_type == "default") %>%
@@ -320,13 +324,13 @@ node_colors <- c(
   "Failed assembly" = "#7f7f7f",
   "No similar reference" = "#7f7f7f",
   "Not run" = "#7f7f7f",
-  "Misleading" = "red",
-  "Incorrect" = "red",
-  "Family" = "orange",
-  "Genus" = "#FFD700",
-  "Inconclusive" = "#FFD700",
-  "Species" = "#2ca02c",
-  "Correct" = "#2ca02c"
+  "Anomalous" = "#414487FF",
+  "Incorrect" = "#414487FF",
+  "Family" = "#2A788EFF",
+  "Genus" = "#22A884FF",
+  "Inconclusive" = "#22A884FF",
+  "Species" = "#7AD151FF",
+  "Correct" = "#7AD151FF"
 )
 
 # Convert to lodes form so each row is a stage for a sample
@@ -363,7 +367,7 @@ alluvial_plot <- ggplot(lodes,
     aes(x = 1, y = y, label = expected_species),
     hjust = 1,
     position = position_nudge(x = -0.05),
-    size = 2,
+    size = 2.5,
     stat = "identity",
     inherit.aes = FALSE,
     na.rm = TRUE
@@ -376,7 +380,7 @@ alluvial_plot <- ggplot(lodes,
   ) +
   scale_fill_manual(values = node_colors, breaks = unique(alluvial_plot_data$interpretation)) +
   theme_minimal() +
-  labs(title = NULL, x = NULL, y = NULL, fill = "Interpretation") +
+  labs(title = NULL, x = NULL, y = NULL, fill = "Result") +
   coord_cartesian(clip = "off") +
   theme(
     legend.position = c(.91, .96),
