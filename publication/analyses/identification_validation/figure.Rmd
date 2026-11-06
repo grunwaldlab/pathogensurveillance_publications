@@ -1,5 +1,5 @@
 ---
-title: "Untitled"
+title: "Pathogensurveillance ID accuracy validation"
 output: html_document
 date: "2026-05-28"
 ---
@@ -11,26 +11,25 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
-```{r}
+```{r load_libraries, message=FALSE}
 library(PathoSurveilR)
 library(purrr)
 library(ape)
 library(tibble)
 library(ggalluvial)
-library(ggalluvial)
 library(dplyr)
 library(ggplot2)
 library(readr)
 library(taxize)
+library(knitr)
 ```
 
 
 ## Analysis arguments
 
-```{r}
-defualt_run_output_dir <- 'output/default_runs_output'
+```{r analysis_arguments}
+default_run_output_dir <- 'output/default_runs_output'
 manual_reruns_dir <- 'output/manual_runs_output'
-include_perfect_sendsketch_hits <- TRUE
 ```
 
 
@@ -39,9 +38,9 @@ include_perfect_sendsketch_hits <- TRUE
 These are copies of the data used as inputs for the main reports.
 They contain the most important results of the pipeline and PathoSurveilR knows where to find data in these directories.
 
-```{r}
+```{r get_input_dirs}
 # Get report input dirs with main results
-report_input_dirs <- list.files(defualt_run_output_dir, full.names = TRUE)
+report_input_dirs <- list.files(default_run_output_dir, full.names = TRUE)
 
 # Get report input dirs for those that were manually rerun
 rerun_input_dirs <- list.files(manual_reruns_dir, full.names = TRUE)
@@ -61,7 +60,7 @@ First we can define some functions that will be used by this loop.
 
 A function to determine whether taxon names appear to be ambiguous (e.g. "unidentified bacterium"):
 
-```{r}
+```{r ambiguous_taxa_function}
 is_ambiguous_taxon_name <- function(taxon_names) {
   # Get patterns to filter out
   patterns <- c(".*\\bunknown.*", ".*\\bunidentified.*", ".*incertae[_ -]+sedis.*", 
@@ -77,9 +76,9 @@ is_ambiguous_taxon_name <- function(taxon_names) {
 }
 ```
 
-A function to return the tips in a phylogentic tree ordered by decreasing copehentic distance (how different they are based on branch length):
+A function to return the tips in a phylogenetic tree ordered by increasing copehentic distance (how different they are based on branch length):
 
-```{r}
+```{r tree_distance_function}
 get_tips_by_distance <- function(tree, target_tip) {
   # Check if target_tip exists in the tree
   if (!target_tip %in% tree$tip.label) {
@@ -105,7 +104,7 @@ get_tips_by_distance <- function(tree, target_tip) {
 
 Now we can loop over the input directories and add more columns of identification-relevant statistics:
 
-```{r}
+```{r compile_results}
 results <- pmap_dfr(input_dir_data, function(dir_path, run_type) {
   sample_metadata <- find_ps_data(dir_path, target = 'sample_metadata')[[1]]
   reference_metadata <- find_ps_data(dir_path, target = 'reference_metadata')[[1]]
@@ -174,23 +173,13 @@ results <- pmap_dfr(input_dir_data, function(dir_path, run_type) {
 })
 ```
 
-We can now choose to filter out all analyses with perfect sendsketch hits, since these likely indicate that the assembly corresponding to the reads for the given sample is represented by its sketch in the sendsketch database.
-This would interfere with our goal of simulating a newly sequenced organism.
-Since sendsketch does not return the NCBI ID of the match, we can not filter for this explicitly, so this is the next best indicator.
-
-```{r}
-if (! include_perfect_sendsketch_hits)  {
-  results <- results[results$sendsketch_ani < 99.9, ]  
-}
-```
-
 
 ## Interpret the identification statistics
 
 Compare the expected taxon to the one returned by sendsketch, sourmash, and the multigene phylogeny to determine the finest taxonomic rank that was accurately classified.
 First lets look up the family of genera identified by the multigene phylogeny:
 
-```{r cache=TRUE}
+```{r lookup_families, cache=TRUE}
 # Look up families for sourmash and multigene IDs using taxize
 get_genus <- function(species_name) {
   if (is.na(species_name)) return(NA_character_)
@@ -204,7 +193,7 @@ unique_genera <- unique(na.omit(c(
 )))
 
 # Query families using taxize
-genus_families <- tax_name(sci = unique_genera, get = "family", db = "ncbi", rows = 2)
+genus_families <- tax_name(sci = unique_genera, get = "family", db = "ncbi", rows = 2, messages = FALSE)
 family_map <- setNames(genus_families$family, genus_families$query)
 
 # Add family columns to results
@@ -215,9 +204,9 @@ results <- results %>%
   )
 ```
 
-Now we can classify the accuracy of each identificaiton method.
+Now we can classify the accuracy of each identification method.
 
-```{r results=FALSE}
+```{r classify_identification, results=FALSE}
 # Function to classify identification results
 classify_id <- function(id, expected_species, expected_genus, expected_family, has_family_correct = FALSE) {
   if (is.na(id)) {
@@ -247,9 +236,9 @@ results <- results %>%
 
 # Add data from manual evaluation
 
-```{r}
+```{r add_evaluation}
 # Add data from human valuation
-evaluation_data <- read_tsv('human_evaluation.tsv') %>%
+evaluation_data <- read_tsv('human_evaluation.tsv', show_col_types = FALSE) %>%
   select(sample_id, run_type, appears_conclusive, correct_species, correct_genus, explanation)
 
 # Only consider samples that we have results for
@@ -257,7 +246,7 @@ evaluation_data <- evaluation_data[evaluation_data$sample_id %in% results$sample
 
 # Add data from human evaluation onto the results table
 results <- left_join(results, evaluation_data, join_by(sample_id, run_type))
-results$appears_conclusive[is.na(results$appears_conclusive)] <- results$sourmash_ani[is.na(results$appears_conclusive)] >= 0.95
+results$appears_conclusive[is.na(results$appears_conclusive)] <- results$sourmash_ani[is.na(results$appears_conclusive)] >= 95
 results$correct_species[is.na(results$correct_species)] <- results$multigene[is.na(results$correct_species)] == "Species" # Samples with the correct ID for all sendsketch, sourmash, and multigene tree were assumed correct and not manually evaluated
 results$correct_genus[is.na(results$correct_genus)] <- results$multigene[is.na(results$correct_genus)] %in% c("Species", "Genus") # Samples with the correct ID for all sendsketch, sourmash, and multigene tree were assumed correct and not manually evaluated
 
@@ -266,11 +255,11 @@ classify_interpretation <- function(appears_conclusive, correct_species) {
   if (is.na(appears_conclusive) || is.na(correct_species)) {
     return("NA")
   }
-  if (correct_species) {
-    return("Correct")
-  }
   if (!appears_conclusive) {
     return("Inconclusive")
+  }
+  if (correct_species) {
+    return("Correct")
   }
   return("Anomalous")
 }
@@ -280,18 +269,19 @@ results$interpretation = map2_chr(results$appears_conclusive, results$correct_sp
 
 To manually inspect:
 
-```{r}
+```{r inspect_results}
 results %>%
   filter(run_type == "default") %>%
-  filter(is.na(interpretation) | interpretation != "Correct" | sourmash_ani < 95) %>%
-  select(sample_id, expected_species, multigene_id, sendsketch_has_correct_genus, sendsketch_has_correct_family, interpretation) %>%
-  arrange(desc(interpretation))
+  filter(interpretation != "Correct" | sourmash_ani < 95) %>%
+  select(sample_id, expected_species, multigene_id, interpretation) %>%
+  arrange(desc(interpretation)) %>%
+  kable()
 ```
 
 
 ## Plot how ID accuracy relates to method used
 
-```{r fig.height = n_distinct(results$sample_id) / 10 + 1, fig.width = 12}
+```{r prepare_alluvial_plot_data}
 # Get default run data
 default_results <- results %>%
   filter(run_type == "default") %>%
@@ -315,103 +305,188 @@ alluvial_data$explanation[alluvial_data$interpretation_adjusted == "Correct"] <-
 # Prepare wide-format data for ggalluvial (one row per sample)
 alluvial_plot_data <- alluvial_data %>%
   transmute(sample_id, expected_species, interpretation = interpretation_adjusted, sendsketch, sourmash, multigene, interpretation_default, interpretation_adjusted, explanation)
-alluvial_plot_data$alluvium_id <- seq_len(nrow(alluvial_plot_data))
-
-# Color mapping
-node_colors <- c(
-  "Mislabeled sample" = "#7f7f7f",
-  "Species complex" = "#7f7f7f",
-  "Failed assembly" = "#7f7f7f",
-  "No similar reference" = "#7f7f7f",
-  "Not run" = "#7f7f7f",
-  "Anomalous" = "#414487FF",
-  "Incorrect" = "#414487FF",
-  "Family" = "#2A788EFF",
-  "Genus" = "#22A884FF",
-  "Inconclusive" = "#22A884FF",
-  "Species" = "#7AD151FF",
-  "Correct" = "#7AD151FF"
-)
-
-# Convert to lodes form so each row is a stage for a sample
-# to_lodes_form renumbers IDs as integers, so use an integer key for joining
-lodes <- to_lodes_form(alluvial_plot_data, axes = 4:9, id = "alluvium_id")
-lodes$freq <- 1  # each sample contributes 1 unit
-
-# Rename x positions
-level_names <- c("sendsketch", "sourmash", "multigene", "interpretation_default",
-                 "interpretation_adjusted", "explanation")
-display_labels <- c("Sendsketch ID\nAccuracy", "Sourmash ID\nAccuracy", "Phylogeny ID\nAccuracy", "Interpretation\n(Default parameters)",
-                    "Interpretation\n(Custom parameters)", "Explanation")
-lodes$x <- factor(lodes$x, levels = level_names, labels = display_labels)
-lodes$stratum <- factor(lodes$stratum, levels = rev(names(node_colors)))
+```
 
 
-
-# Plot with ggalluvial - each alluvium traces an individual sample
-alluvial_plot <- ggplot(lodes,
-                       aes(x = x, y = freq, stratum = stratum, alluvium = alluvium_id)) +
-  geom_alluvium(aes(fill = interpretation), width = 1/12, alpha = 0.6, color = "#FFFFFF88", linewidth = 0.2) +
-  geom_stratum(aes(fill = stratum), width = 1/12, color = "black", show.legend = FALSE) +
-  # Extract exact y-positions of alluvia at first axis for sample labels
-  geom_text(
-    data = {
-      temp_plot <- ggplot(lodes, aes(x = x, y = freq, stratum = stratum, alluvium = alluvium_id)) +
-        geom_alluvium(width = 1/12)
-      built_data <- ggplot_build(temp_plot)$data[[1]]
-      built_data %>%
-        filter(x == 1) %>%
-        select(alluvium, y) %>%
-        left_join(alluvial_plot_data %>% select(alluvium_id, expected_species), by = c("alluvium" = "alluvium_id"))
-    },
-    aes(x = 1, y = y, label = expected_species),
-    hjust = 1,
-    position = position_nudge(x = -0.05),
-    size = 2.5,
-    stat = "identity",
-    inherit.aes = FALSE,
-    na.rm = TRUE
-  ) +
-  geom_text(
-    stat = "stratum",
-    aes(label = paste0(after_stat(stratum), " (", round(after_stat(count) / n_distinct(alluvial_plot_data$sample_id) * 100, 1), "%)")),
-    size = 3.5, color = "black", hjust = 0, fontface = "bold",
-    position = position_nudge(x = 0.07)
-  ) +
-  scale_fill_manual(values = node_colors, breaks = unique(alluvial_plot_data$interpretation)) +
-  theme_minimal() +
-  labs(title = NULL, x = NULL, y = NULL, fill = "Result") +
-  coord_cartesian(clip = "off") +
-  theme(
-    legend.position = c(.91, .96),
-    legend.justification = c(0, 1),
-    legend.text = element_text(size = 12),
-    legend.title = element_text(size = 14),
-    panel.grid = element_blank(),
-    axis.text.y = element_blank(),
-    axis.text.x = element_blank(),
-    axis.ticks.x = element_blank(),
-    plot.margin = margin(t = 5, r = 100, b = 5, l = 60)
-  ) +
-  annotate("text",
-    x = display_labels,
-    y = -1.5,
-    label = display_labels,
-    size = 4, vjust = 1
+```{r alluvial_plot_function}
+make_alluvial_plot <- function(input_data, out_path, compress = FALSE) {
+  # Color mapping
+  node_colors <- c(
+    "Mislabeled sample" = "#7f7f7f",
+    "Species complex" = "#7f7f7f",
+    "Failed assembly" = "#7f7f7f",
+    "No similar reference" = "#7f7f7f",
+    "Not run" = "#7f7f7f",
+    "Anomalous" = "#414487FF",
+    "Incorrect" = "#414487FF",
+    "Family" = "#2A788EFF",
+    "Genus" = "#22A884FF",
+    "Inconclusive" = "#22A884FF",
+    "Species" = "#7AD151FF",
+    "Correct" = "#7AD151FF"
   )
-if (include_perfect_sendsketch_hits) {
-  alluvial_out_path = 'output/alluvial_plot.svg'
-} else {
-  alluvial_out_path = 'output/alluvial_plot_no_perfect_sendsketch_hits.svg'
+  
+  # Optionally compress all completely correct IDs to a single line
+  n_samples <- n_distinct(input_data$sample_id)
+  if (compress) {
+    all_correct <- input_data$sendsketch == "Species" &
+      input_data$sourmash == "Species" &
+      input_data$multigene == "Species" &
+      input_data$interpretation == "Correct"
+    input_data <- filter(input_data, !all_correct)
+    input_data <- rbind(
+      tibble(
+        sample_id = "combined",
+        expected_species = paste0(sum(all_correct), ' other species'),
+        interpretation = 'Correct',
+        sendsketch = 'Species',
+        sourmash = 'Species',
+        multigene = 'Species',
+        interpretation_default = 'Correct',
+        interpretation_adjusted = 'Correct',
+        explanation = 'Correct'
+      ),
+      input_data
+    )
+  }
+  
+  # Convert to format needed by geom_alluvium
+  input_data$alluvium_id <- seq_len(nrow(input_data))
+  lodes <- to_lodes_form(input_data, axes = 4:9, id = "alluvium_id")
+  lodes$freq <- 1
+  if (compress) {
+    lodes$freq[lodes$sample_id == 'combined'] <- 3
+  }
+  
+  # Rename x positions
+  level_names <- c("sendsketch", "sourmash", "multigene", "interpretation_default",
+                   "interpretation_adjusted", "explanation")
+  display_labels <- c("Sendsketch ID\nAccuracy", "Sourmash ID\nAccuracy", "Phylogeny ID\nAccuracy", "Interpretation\n(Default parameters)",
+                      "Interpretation\n(Custom parameters)", "Explanation")
+  lodes$x <- factor(lodes$x, levels = level_names, labels = display_labels)
+  lodes$stratum <- factor(lodes$stratum, levels = rev(names(node_colors)))
+  
+  # Plot with ggalluvial - each alluvium traces an individual sample
+  alluvial_plot <- ggplot(lodes,
+         aes(x = x, y = freq, stratum = stratum, alluvium = alluvium_id)) +
+    geom_alluvium(aes(fill = interpretation), width = 1/12, alpha = 0.6, color = "#FFFFFF88", linewidth = 0.2) +
+    geom_stratum(aes(fill = stratum), width = 1/12, color = "black", show.legend = FALSE) +
+    # Extract exact y-positions of alluvia at first axis for sample labels
+    geom_text(
+      data = {
+        temp_plot <- ggplot(lodes, aes(x = x, y = freq, stratum = stratum, alluvium = alluvium_id)) +
+          geom_alluvium(width = 1/12)
+        built_data <- ggplot_build(temp_plot)$data[[1]]
+        built_data %>%
+          filter(x == 1) %>%
+          select(alluvium, y) %>%
+          left_join(input_data %>% select(alluvium_id, expected_species), by = c("alluvium" = "alluvium_id"))
+      },
+      aes(x = 1, y = y, label = expected_species),
+      hjust = 1,
+      position = position_nudge(x = -0.06),
+      size = 2.5,
+      stat = "identity",
+      inherit.aes = FALSE,
+      na.rm = TRUE
+    ) +
+    geom_text(
+      stat = "stratum",
+      aes(label = ifelse(
+        after_stat(stratum) %in% c('Species', 'Correct') & compress,
+        paste0(after_stat(stratum), " (", round((after_stat(count) + sum(all_correct) - 3) / n_samples * 100, 1), "%)"),
+        paste0(after_stat(stratum), " (", round(after_stat(count) / n_samples * 100, 1), "%)")
+      )),
+      size = 3.5, color = "black", hjust = 0, fontface = "bold",
+      position = position_nudge(x = 0.07)
+    ) +
+    scale_fill_manual(values = node_colors, breaks = unique(input_data$interpretation)) +
+    theme_minimal() +
+    labs(title = NULL, x = NULL, y = NULL, fill = "Result") +
+    coord_cartesian(clip = "off") +
+    theme(
+      legend.position = c(.91, .96),
+      legend.justification = c(0, 1),
+      legend.text = element_text(size = 12),
+      legend.title = element_text(size = 14),
+      panel.grid = element_blank(),
+      axis.text.y = element_blank(),
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank(),
+      plot.margin = margin(t = 0, r = 90, b = 20, l = 60)
+    ) +
+    annotate("text",
+             x = display_labels,
+             y = -1.5,
+             label = display_labels,
+             size = 4, vjust = 1
+    )
+  
+  # Save and return plot
+  ggsave(alluvial_plot, filename = out_path, height = nrow(input_data) / 10 + 1, width = 12)
+  alluvial_plot
 }
-ggsave(alluvial_plot, filename = alluvial_out_path, height = nrow(alluvial_plot_data) / 10 + 1, width = 12)
-alluvial_plot
+
+perfect_sendsketch_hit_ids <- unique(results$sample_id[results$sendsketch_ani == 100])
+```
+
+```{r alluvial_plot, fig.height = 18, fig.width = 12}
+make_alluvial_plot(alluvial_plot_data, out_path = 'output/alluvial_plot.svg')
+```
+
+**Caption**:
+
+The accuracy of taxonomic identifications for 96 samples at different stages of the pathogensurveillance workflow. Samples are NCBI SRA accessions representing randomly selected species from unique genera and are displayed as paths moving from left to right. Each sample was analysed with pathogensurveillance using default settings. The accuracy of the taxonomic identification determined by the three identification steps of pathogensurveillance are shown in "Sendsketch ID", "Sourmash ID", and "Phylogeny ID" steps. The report produced by pathogensurveillance for each sample was manually interpreted to determine the accuracy and confidence of the identification. Samples with inconclusive identifications were rerun with custom settings based on the initial results in an attempt to refine the identification. The results of these default and custom runs are plotted on the "Interpretation" steps. Identifications that were inconclusive or potentially misleading (Anomalous) after this second analysis were investigated to determine why a correct and confident identification could not be determined. The results of this investigation is displayed in the "Explanation" step.
+
+**Methods**:
+
+To evaluate the accuracy of taxonomic identification in the pathogensurveillance workflow, we selected 96 NCBI Sequence Read Archive (SRA) accessions representing randomly chosen species from unique genera.
+We selected these by first randomly sampled families of both prokaryotes and eukaryotes using the NCBI Taxonomy database via the rentrez R package.
+For each sampled family, we downloaded assembly metadata using the NCBI datasets command-line tool and used it to filtered candidate species.
+Species were required to have at least five assemblies in NCBI, including at least one in the RefSeq database.
+We excluded assemblies with ambiguous taxon names (e.g., containing "sp.", "uncultured", "metagenome", or "candidatus"), those associated with metagenomes, and those with CheckM contamination exceeding 5%.
+Some accessions were manually excluded due to missing quality scores in FASTQ files or excessive memory requirements.
+To prevent circular identification, the reference genome associated with each sample's reads was explicitly excluded from the reference set used by pathogensurveillance.
+
+Each sample was analysed with pathogensurveillance using default settings.
+The workflow includes three sequential taxonomic identification steps: a rapid k-mer sketch search with sendsketch, an estimated ANI comparison with sourmash against downloaded reference genomes, and a multigene phylogeny.
+We removed samples from the analysis with sendsketch ANI values of 100%, because this likely indicates that the corresponding assembly is present in the sendsketch database, which would violate the goal of simulating a newly sequenced organism.
+To assess accuracy at each step, we compared the identified taxon against the known species.
+For sendsketch we checked whether the correct species, genus, or family appeared anywhere in the returned taxonomic results.
+For sourmash, we extracted the ANI matrix and identified the highest-ANI reference with an non-ambiguous species name.
+For the multigene phylogeny, we calculated cophenetic distances from the sample tip to all other tips in the tree and selected the closest non-ambiguous reference taxon as the phylogeny-based identification.
+Identification accuracy was classified at the finest taxonomic rank achieved: "Species" (exact species match), "Genus" (correct genus but not species), "Family" (correct family but not genus), "Incorrect" (none of the above), or "Not run" (if the step did not produce output).
+Genera identified by sourmash and the multigene phylogeny were mapped to families using the NCBI taxonomy via the taxize R package to enable family-level classification.
+The pathogensurveillance report for each sample was manually interpreted to determine both the accuracy and the confidence of the overall identification.
+Samples with inconclusive identifications after the default run were rerun with custom parameters based on the initial results in an attempt to refine the identification.
+Samples that remained inconclusive or produced potentially misleading results after the second analysis were investigated manually to determine the underlying reason.
+
+
+
+```{r alluvial_plot_compressed, fig.height = 5, fig.width = 12}
+make_alluvial_plot(alluvial_plot_data, out_path = 'output/alluvial_plot_compressed.svg', compress = TRUE)
+```
+
+Lets also make a plot without perfect sendsketch hits, since these likely indicate that the assembly corresponding to the reads for the given sample is represented by its sketch in the sendsketch database.
+This would interfere with our goal of simulating a newly sequenced organism.
+Since sendsketch does not return the NCBI ID of the match, we can not filter for this explicitly, so this is the next best indicator.
+
+```{r alluvial_plot_no_perfect_sendsketch, fig.height = 11, fig.width = 12}
+alluvial_plot_data %>%
+  filter(! sample_id %in% perfect_sendsketch_hit_ids) %>%
+  make_alluvial_plot(out_path = 'output/alluvial_plot_no_perfect_sendsketch_hits.svg')
+```
+
+```{r alluvial_plot_no_perfect_sendsketch_compressed, fig.height = 4, fig.width = 12}
+alluvial_plot_data %>%
+  filter(! sample_id %in% perfect_sendsketch_hit_ids) %>%
+  make_alluvial_plot(out_path = 'output/alluvial_plot_no_perfect_sendsketch_hits_compressed.svg', compress = TRUE)
 ```
 
 
 ## Plot relationship between ANI and ID accuracy
 
-```{r}
+```{r ani_scatter}
 results %>%
   ggplot() +
   geom_point(aes(x = sourmash_ani, y = sendsketch_ani, color = interpretation))

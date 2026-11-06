@@ -28,3 +28,5 @@ work
 intermediate
 output/pathsurveil_output
 output/manual_reruns
+output/default_runs_output
+output/manual_runs_output
