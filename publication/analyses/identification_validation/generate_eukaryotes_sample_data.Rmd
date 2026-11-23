@@ -439,9 +439,7 @@ reference_metadata <- tibble(
   ref_group_ids = 'disallowed_refs',
   ref_ncbi_accession = sample_metadata$accession,
   ref_primary_usage = 'excluded',
-  ref_contextual_usage = 'excluded',
-  ref_ncbi_query = '',
-  ref_ncbi_query_max = ''
+  ref_contextual_usage = 'excluded'
 )
 
 # Write results to TSV files for use with pathogensurveillance
@@ -457,4 +455,101 @@ if (file.exists(existing_metadata_path)) {
 }
 write_tsv(sample_metadata, file = file.path(params$output_path, "eukaryote_sample_metadata.tsv"))
 write_tsv(reference_metadata, file = file.path(params$output_path, "eukaryote_reference_metadata.tsv"))
+```
+
+## Create a reproducible balanced subsample
+
+Subsample up to the requested maximum per group. If fewer rows are available,
+all available rows in that group are retained. Taxonomy lineages are used to
+distinguish fungi, protists, and other eligible eukaryotes.
+
+```{r subsample, cache=FALSE}
+sample_metadata_path <- file.path(params$output_path, "eukaryote_sample_metadata.tsv")
+reference_metadata_path <- file.path(params$output_path, "eukaryote_reference_metadata.tsv")
+sample_metadata <- read_tsv(sample_metadata_path, show_col_types = FALSE) %>%
+  mutate(tax_id = as.character(tax_id))
+
+tax_ids <- unique(na.omit(sample_metadata$tax_id))
+taxonomy_rows <- list()
+for (tax_id_batch in split(tax_ids, ceiling(seq_along(tax_ids) / 50))) {
+  taxonomy_document <- entrez_fetch(
+    db = "taxonomy",
+    id = tax_id_batch,
+    rettype = "xml",
+    parsed = TRUE
+  )
+  for (taxon in getNodeSet(taxonomy_document, "/TaxaSet/Taxon")) {
+    tax_id <- xmlValue(getNodeSet(taxon, "./TaxId")[[1]])
+    lineage_ids <- getNodeSet(taxon, "./LineageEx/Taxon/TaxId")
+    lineage_names <- getNodeSet(taxon, "./LineageEx/Taxon/ScientificName")
+    taxonomy_rows[[tax_id]] <- tibble(
+      tax_id = tax_id,
+      lineage_ids = list(vapply(lineage_ids, xmlValue, character(1))),
+      lineage_names = list(vapply(lineage_names, xmlValue, character(1)))
+    )
+  }
+  Sys.sleep(0.34)
+}
+
+taxonomy_lineage <- bind_rows(taxonomy_rows)
+sample_metadata <- left_join(sample_metadata, taxonomy_lineage, by = "tax_id")
+if (anyNA(sample_metadata$lineage_ids)) {
+  stop("Could not retrieve taxonomy lineage for every sample.")
+}
+
+algal_clades <- c("Chlorophyta", "Rhodophyta", "Ochrophyta", "Cryptophyta", "Haptophyta")
+protist_clades <- c("Sar", "Discoba", "Metamonada", "Amoebozoa", "Cryptista", "Haptista")
+sample_metadata$sample_group <- map_chr(seq_len(nrow(sample_metadata)), function(i) {
+  lineage_ids <- sample_metadata$lineage_ids[[i]]
+  lineage_names <- sample_metadata$lineage_names[[i]]
+  if ("50557" %in% lineage_ids) return("Insects")
+  if ("4751" %in% lineage_ids) return("Fungi")
+  if (any(lineage_names %in% algal_clades)) return("Other")
+
+  eukaryota_index <- match("Eukaryota", lineage_names)
+  top_clade <- if (!is.na(eukaryota_index) && eukaryota_index < length(lineage_names)) {
+    lineage_names[eukaryota_index + 1]
+  } else {
+    NA_character_
+  }
+  if (top_clade %in% protist_clades) return("Protists")
+  "Other"
+})
+
+subsample_maximums <- c(Insects = 10L, Fungi = 20L, Protists = 20L, Other = 10L)
+set.seed(params$random_seed)
+subsample_metadata <- imap_dfr(subsample_maximums, function(maximum, group) {
+  group_metadata <- filter(sample_metadata, sample_group == group)
+  if (nrow(group_metadata) > maximum) {
+    group_metadata <- slice_sample(group_metadata, n = maximum)
+  }
+  group_metadata
+}) %>%
+  select(-lineage_ids, -lineage_names, -sample_group)
+if (nrow(subsample_metadata) > 0) {
+  subsample_metadata <- slice_sample(subsample_metadata, n = nrow(subsample_metadata))
+}
+
+subsample_reference_metadata <- read_tsv(
+  reference_metadata_path,
+  show_col_types = FALSE
+) %>%
+  filter(ref_ncbi_accession %in% subsample_metadata$accession)
+
+write_tsv(
+  subsample_metadata,
+  file = file.path(params$output_path, "eukaryote_sample_metadata_subsample.tsv")
+)
+write_tsv(
+  subsample_reference_metadata,
+  file = file.path(params$output_path, "eukaryote_reference_metadata_subsample.tsv")
+)
+
+cat("Subsample rows:", nrow(subsample_metadata), "\n")
+print(count(sample_metadata, sample_group, name = "available"))
+print(count(
+  sample_metadata %>% semi_join(subsample_metadata, by = "accession"),
+  sample_group,
+  name = "selected"
+))
 ```
