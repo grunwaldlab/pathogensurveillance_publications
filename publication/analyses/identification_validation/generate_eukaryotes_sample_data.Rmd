@@ -9,7 +9,7 @@ output:
 params:
   families_per_kingdom:
     label: "Number of eukaryotic families to sample"
-    value: 4000
+    value: 5000
   min_assemblies_per_species:
     label: "Minimum additional assemblies per species (excluding type)"
     value: 5
@@ -31,7 +31,7 @@ params:
 knitr::opts_chunk$set(
   cache = TRUE,
   cache.lazy = FALSE,
-  cache.path = 'generate_eukaryotes_sample_data_cache_v4/'
+  cache.path = 'generate_eukaryotes_sample_data_cache_v5/'
 )
 
 # Load required libraries
@@ -56,21 +56,28 @@ plan(multisession)
 ```
 
 
-## Randomly sample `r params$families_per_kingdom` families from Eukaryota
+## Randomly sample `r params$families_per_kingdom` families from eligible eukaryotic groups
 
-Define the kingdom taxonomy IDs and retrieve family-level taxa for each kingdom.
+Sample families from non-plant, non-animal Eukaryota and from Insecta. This includes fungi and protists while excluding plants and non-insect animals.
 
 ```{r kingdom_taxonomy}
-kingdoms <- c(Eukaryota = 2759)
+taxonomy_queries <- tibble(
+  kingdom = c('Other Eukaryota', 'Insects'),
+  kingdom_id = c(2759, 50557),
+  term = c(
+    'txid2759[Subtree] AND family[Rank] NOT txid33090[Subtree] NOT txid33208[Subtree]',
+    'txid50557[Subtree] AND family[Rank]'
+  )
+)
 
-family_data_cache_path <- file.path(intermediate_path, 'family_data_v3.csv')
+family_data_cache_path <- file.path(intermediate_path, 'family_data_v4.csv')
 if (file.exists(family_data_cache_path)) {
   family_data <- read_csv(family_data_cache_path)
 } else {
-  family_data <- map_dfr(seq_along(kingdoms), function(i) {
+  family_data <- map_dfr(seq_len(nrow(taxonomy_queries)), function(i) {
     search_result <- entrez_search(
       db = "taxonomy",
-      term = sprintf("txid%s[Subtree] AND family[Rank]", kingdoms[i]),
+      term = taxonomy_queries$term[i],
       retmax = 10000,
     )
     family_ids <- search_result$ids
@@ -84,8 +91,8 @@ if (file.exists(family_data_cache_path)) {
     }))
     
     tibble(
-      kingdom = names(kingdoms)[i],
-      kingdom_id = kingdoms[i],
+      kingdom = taxonomy_queries$kingdom[i],
+      kingdom_id = taxonomy_queries$kingdom_id[i],
       family_id = family_ids,
       family = family_name
     )
@@ -315,7 +322,7 @@ get_biosample_data <- function(biosample_id) {
 }
 
 # Look up SRA accessions from biosample IDs
-biosample_data_cache_path <- file.path(intermediate_path, 'biosample_data_v4.csv')
+biosample_data_cache_path <- file.path(intermediate_path, 'biosample_data_v5.csv')
 if (file.exists(biosample_data_cache_path)) {
   biosample_data <- read_csv(biosample_data_cache_path)
 } else {
